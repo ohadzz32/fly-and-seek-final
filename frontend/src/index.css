@@ -1,0 +1,33 @@
+/* בחירה של כל האלמנטים בדף לאיפוס כללי */
+* {
+  margin: 0;                /* מבטל רווחים חיצוניים שדפדפנים מוסיפים כברירת מחדל */
+  padding: 0;               /* מבטל רווחים פנימיים שדפדפנים מוסיפים כברירת מחדל */
+  box-sizing: border-box;   /* מוודא שגודל האלמנט כולל את הפאדינג והמסגרת, מה שמונע חריגות ברוחב */
+}
+
+/* הגדרות עבור גוף הדף */
+body {
+  margin: 0;                /* מבטיח שלא יהיה שוליים לבנים מסביב למפה */
+  /* רשימת פונטים מהיררכיית מערכת ההפעלה (אפל, חלונות, אנדרואיד) למראה טבעי וטעינה מהירה */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  /* שיפור החלקת הטקסט בדפדפני כרום וספארי */
+  -webkit-font-smoothing: antialiased;
+  /* שיפור החלקת הטקסט בדפדפני פיירפוקס */
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* הגדרות עבור תגיות קוד (טקסט מונוספייס) */
+code {
+  /* שימוש בפונטים ברוחב קבוע למראה של קוד תכנות */
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* האלמנט המרכזי שבו רצה אפליקציית ה-React */
+#root {
+  width: 100vw;             /* קובע שהרוחב יהיה בדיוק 100% מרוחב חלון התצוגה (Viewport Width) */
+  height: 100vh;            /* קובע שהגובה יהיה בדיוק 100% מגובה חלון התצוגה (Viewport Height) */
+  overflow: hidden;         /* מונע הופעה של פסי גלילה אם המפה זזה מעט מחוץ לגבולות המסך */
+}

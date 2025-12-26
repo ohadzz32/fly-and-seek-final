@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 type RunMode = 'OFFLINE' | 'REALTIME' | 'SNAP';
 
-
+אעע
 const ModeSelector = () => {
   const [currentMode, setCurrentMode] = useState<RunMode>('OFFLINE');
   const [isLoading, setIsLoading] = useState(false);

@@ -1,0 +1,75 @@
+
+
+import { Flight } from '../models/Flight';
+import { IFlightRepository } from '../interfaces/IFlightRepository';
+import { IFlight } from '../models/Flight.types';
+import { AppError } from '../utils/errors';
+import { logger } from '../utils/logger';
+
+
+export class FlightRepository implements IFlightRepository {
+  
+  async findAll(): Promise<IFlight[]> {
+    try {
+      const flights = await Flight.find().lean().exec();
+      logger.info(`Retrieved ${flights.length} flights from database`);
+      return flights as IFlight[];
+    } catch (error) {
+      logger.error('Failed to fetch flights', { error });
+      throw new AppError('Database query failed', 500, error as Error);
+    }
+  }
+
+  
+  async findById(flightId: string): Promise<IFlight | null> {
+    try {
+      const flight = await Flight.findOne({ flightId }).lean().exec();
+      return flight as IFlight | null;
+    } catch (error) {
+      logger.error(`Failed to find flight: ${flightId}`, { error });
+      throw new AppError('Database query failed', 500, error as Error);
+    }
+  }
+
+  
+  async bulkWrite(operations: any[]): Promise<void> {
+    try {
+      const result = await Flight.bulkWrite(operations);
+      logger.info(`Bulk write completed: ${result.modifiedCount} modified, ${result.upsertedCount} inserted`);
+    } catch (error) {
+      logger.error('Bulk write operation failed', { error });
+      throw new AppError('Bulk write failed', 500, error as Error);
+    }
+  }
+
+  
+  async updateOne(flightId: string, updates: Partial<IFlight>): Promise<IFlight | null> {
+    try {
+      const updatedFlight = await Flight.findOneAndUpdate(
+        { flightId },
+        { $set: updates },
+        { new: true, runValidators: true }
+      ).lean().exec();
+
+      if (updatedFlight) {
+        logger.info(`Flight ${flightId} updated successfully`);
+      }
+
+      return updatedFlight as IFlight | null;
+    } catch (error) {
+      logger.error(`Failed to update flight: ${flightId}`, { error });
+      throw new AppError('Update operation failed', 500, error as Error);
+    }
+  }
+
+  
+  async deleteAll(): Promise<void> {
+    try {
+      const result = await Flight.deleteMany({});
+      logger.info(`Cleared ${result.deletedCount} flights from database`);
+    } catch (error) {
+      logger.error('Failed to clear flights', { error });
+      throw new AppError('Delete operation failed', 500, error as Error);
+    }
+  }
+}

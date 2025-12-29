@@ -1,156 +1,159 @@
-import express from 'express';
+import express, { Application } from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { Flight } from './models/Flight';
-import { IFlightService, RunMode } from './services/FlightService.types';
-import { OfflineService } from './services/OfflineService';
-import { RealTimeService } from './services/RealTimeService';
-import { SnapService } from './services/SnapService';
+import { ServiceManager } from './managers/ServiceManager';
+import { configureRoutes } from './routes';
+import { errorHandler, notFoundHandler } from './middleware/errorMiddleware';
+import { logger } from './utils/logger';
+import { AppError } from './utils/errors';
 
 dotenv.config();
 
-const app = express();
-const PORT = process.env.PORT || 3001;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/fly-and-seek';
+interface ServerConfig {
+  port: number;
+  mongoUri: string;
+  corsOrigins: string[];
+  nodeEnv: string;
+}
 
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-app.use(express.json());
+class FlightTrackingServer {
+  private app: Application;
+  private serviceManager: ServiceManager;
+  private config: ServerConfig;
 
-let currentService: IFlightService | null = null;
+  constructor() {
+    this.app = express();
+    this.serviceManager = new ServiceManager();
+    this.config = this.loadConfiguration();
+  }
 
+  private loadConfiguration(): ServerConfig {
+    return {
+      port: parseInt(process.env.PORT || '3001', 10),
+      mongoUri: process.env.MONGO_URI || 'mongodb://localhost:27017/fly-and-seek',
+      corsOrigins: [
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://localhost:3000'
+      ],
+      nodeEnv: process.env.NODE_ENV || 'development'
+    };
+  }
 
-async function switchService(newMode: RunMode): Promise<void> {
-  try {
-    if (currentService) {
-      console.log(`🛑 Stopping ${currentService.mode} service...`);
-      currentService.stop();
-      currentService = null; 
+  private configureMiddleware(): void {
+    // CORS configuration
+    this.app.use(cors({
+      origin: this.config.corsOrigins,
+      credentials: true,
+      methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization']
+    }));
+
+    // Body parsing
+    this.app.use(express.json());
+    this.app.use(express.urlencoded({ extended: true }));
+
+    logger.info('Middleware configured');
+  }
+
+  private configureRoutes(): void {
+    // Mount API routes
+    this.app.use('/api', configureRoutes(this.serviceManager));
+
+    // 404 handler for undefined routes
+    this.app.use(notFoundHandler);
+
+    // Global error handler (must be last)
+    this.app.use(errorHandler);
+
+    logger.info('Routes configured');
+  }
+
+  private async connectDatabase(): Promise<void> {
+    try {
+      await mongoose.connect(this.config.mongoUri);
+      logger.info('✅ Connected to MongoDB successfully');
+    } catch (error) {
+      logger.error('❌ MongoDB connection failed', { error });
+      throw new AppError('Database connection failed', 500, error as Error);
     }
+  }
 
-    console.log(`🔄 Creating ${newMode} service...`);
-    switch (newMode) {
-      case 'OFFLINE':
-        currentService = new OfflineService();
-        break;
-      case 'REALTIME':
-        currentService = new RealTimeService();
-        break;
-      case 'SNAP':
-        currentService = new SnapService();
-        break;
-      default:
-        throw new Error(`Invalid mode: ${newMode}`);
+  private async initializeDefaultService(): Promise<void> {
+    try {
+      await this.serviceManager.switchService('OFFLINE');
+      logger.info('✅ Default service (OFFLINE) initialized');
+    } catch (error) {
+      logger.error('❌ Failed to initialize default service', { error });
+      throw new AppError('Service initialization failed', 500, error as Error);
     }
+  }
 
-    console.log(`▶️ Starting ${newMode} service...`);
-    await currentService.start();
-    console.log(`🚀 System is now running in ${newMode} mode`);
-    
-  } catch (error: any) {
-    console.error('❌ Error switching service:', error);
-    console.error('Stack:', error.stack);
-    throw error;
+  private async startServer(): Promise<void> {
+    return new Promise((resolve) => {
+      this.app.listen(this.config.port, () => {
+        logger.info(`🚀 Server running on http://localhost:${this.config.port}`);
+        logger.info(`📊 Environment: ${this.config.nodeEnv}`);
+        resolve();
+      });
+    });
+  }
+
+  private setupGracefulShutdown(): void {
+    const shutdown = async (signal: string) => {
+      logger.info(`\n${signal} received, shutting down gracefully...`);
+
+      try {
+        // Stop current service
+        this.serviceManager.stopCurrentService();
+
+        // Close database connection
+        await mongoose.connection.close();
+        logger.info('Database connection closed');
+
+        logger.info('✅ Graceful shutdown completed');
+        process.exit(0);
+      } catch (error) {
+        logger.error('Error during shutdown', { error });
+        process.exit(1);
+      }
+    };
+
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+  }
+
+  async start(): Promise<void> {
+    try {
+      logger.info('🚀 Starting Flight Tracking Server...');
+
+      // Configure Express
+      this.configureMiddleware();
+      this.configureRoutes();
+
+      // Connect to database
+      await this.connectDatabase();
+
+      // Initialize default service
+      await this.initializeDefaultService();
+
+      // Start HTTP server
+      await this.startServer();
+
+      // Setup graceful shutdown
+      this.setupGracefulShutdown();
+
+      logger.info('✅ Server initialization complete');
+    } catch (error) {
+      logger.error('❌ Server initialization failed', { error });
+      process.exit(1);
+    }
   }
 }
 
-mongoose.connect(MONGO_URI)
-  .then(async () => {
-    console.log('✅ Connected to MongoDB');
-    await switchService('OFFLINE');
-  })
-  .catch(err => {
-    console.error('❌ MongoDB connection error:', err);
-    process.exit(1);
-  });
-
-
-app.get('/api/config/mode', (req, res) => {
-  res.json({ mode: currentService?.mode || 'OFFLINE' });
-});
-
-
-app.post('/api/config/mode', async (req, res) => {
-  console.log(' Received mode change request:', req.body);
-  
-  try {
-    const { mode } = req.body;
-    const validModes: RunMode[] = ['OFFLINE', 'REALTIME', 'SNAP'];
-
-    if (!mode) {
-      console.error(' No mode provided in request');
-      return res.status(400).json({ error: 'Mode is required' });
-    }
-
-    if (!validModes.includes(mode)) {
-      console.error(' Invalid mode:', mode);
-      return res.status(400).json({ error: 'Invalid mode. Must be: OFFLINE, REALTIME, or SNAP' });
-    }
-
-    console.log(` Switching to ${mode} mode...`);
-    await switchService(mode);
-    console.log(` Successfully switched to ${mode}`);
-    res.json({ success: true, currentMode: mode });
-    
-  } catch (error: any) {
-    console.error(' Error switching mode:', error);
-    res.status(500).json({ error: error.message || 'Failed to switch mode' });
-  }
-});
-
-
-app.get('/api/flights', async (req, res) => {
-  try {
-    const flights = await Flight.find().lean();
-    res.json(flights);
-  } catch (error) {
-    console.error('Error fetching flights:', error);
-    res.status(500).json({ error: 'Failed to fetch flights' });
-  }
-});
-
-
-
-app.patch('/api/flights/:id', async (req, res) => {
-  try {
-    const { color } = req.body;
-    
-    if (!color) {
-      return res.status(400).json({ error: 'Color is required' });
-    }
-
-    const updated = await Flight.findOneAndUpdate(
-      { flightId: req.params.id },
-      { $set: { color } }, 
-      { new: true }
-    );
-
-    if (!updated) {
-      return res.status(404).json({ error: 'Flight not found' });
-    }
-
-    res.json(updated);
-  } catch (error) {
-    console.error('Error updating flight:', error);
-    res.status(500).json({ error: 'Failed to update flight' });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`📡 Server listening on http://localhost:${PORT}`);
-});
-
-
-process.on('SIGINT', () => {
-  console.log('\n🛑 Shutting down gracefully...');
-  if (currentService) {
-    currentService.stop();
-  }
-  mongoose.connection.close();
-  process.exit(0);
+const server = new FlightTrackingServer();
+server.start().catch((error) => {
+  logger.error('Fatal error during startup', { error });
+  process.exit(1);
 });

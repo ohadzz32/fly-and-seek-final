@@ -1,156 +1,143 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Map } from 'react-map-gl/maplibre';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import { IconLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+
+import { useFlightData } from './hooks/useFlightData';
+import { useMapReady } from './hooks/useMapReady';
+
 import ModeSelector from './components/ModeSelector';
+import { ColorPicker } from './components/ColorPicker';
+import { LoadingSpinner } from './components/LoadingSpinner';
+
+import type { IFlight } from './types/Flight.types';
+
+import { INITIAL_VIEW_STATE, MAP_STYLE_URL, AIRPLANE_ICON_URL } from './constants/mapConfig';
+import { hexToRgb } from './utils/colorUtils';
 
 try {
   if (maplibregl.getRTLTextPluginStatus() === 'unavailable') {
     maplibregl.setRTLTextPlugin(
       'https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js',
-      null as any 
+      null as any
     );
   }
-}
-
-catch (error) {
+} catch (error) {
   console.warn('RTL plugin loading issue:', error);
 }
 
-const INITIAL_VIEW_STATE_OF_ISREAL = { 
-  longitude: 34.8, 
-  latitude: 31.5,
-  zoom: 6,
-  pitch: 0,
-  bearing: 0
-};
-
-const COLORS = [
-  { name: 'Red', hex: '#FF4136' },
-  { name: 'Blue', hex: '#0074D9' },
-  { name: 'Green', hex: '#2ECC40' },
-  { name: 'Yellow', hex: '#FFDC00' },
-  { name: 'Purple', hex: '#B10DC9' }
-];
-
-const hexToRgb = (hex: string): [number, number, number] => { // deck gl use rgb numbers (1-255)(...)(...)
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return [r, g, b];
-};
-
 function App() {
-  const [flights, setFlights] = useState<any[]>([]);
-  const [selectedFlight, setSelectedFlight] = useState<any>(null);
+  const { flights, updateFlightColor } = useFlightData({ pollInterval: 2000 });
+  const isMapReady = useMapReady(150);
 
-  const fetchFlights = async () => {
-    try {
-      const response = await fetch('http://localhost:3001/api/flights');
-      const data = await response.json();
-      setFlights(data);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    }
-  };
+  const [selectedFlight, setSelectedFlight] = useState<IFlight | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    fetchFlights();
-    const interval = setInterval(fetchFlights, 500); 
-    return () => clearInterval(interval);
-  }, []);
-
-  const updateColor = async (colorHex: string) => {
+  const handleColorSelect = async (color: string) => {
     if (!selectedFlight) return;
+
     try {
-      await fetch(`http://localhost:3001/api/flights/${selectedFlight.flightId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ color: colorHex })
-      });
-      setFlights(prev => prev.map(f => 
-        f.flightId === selectedFlight.flightId ? { ...f, color: colorHex } : f
-      ));
+      await updateFlightColor(selectedFlight.flightId, color);
       setSelectedFlight(null);
-    } catch (err) {
-      console.error("Update failed color change", err);
+    } catch (error) {
+      console.error('Failed to update flight color:', error);
+      alert('Failed to update flight color. Please try again.');
     }
   };
 
-const layers = [
-  new IconLayer({
-    id: 'airplane-layer',
-    data: flights,
-    pickable: true,
-    iconAtlas: 'https://img.icons8.com/ios-filled/512/FFFFFF/fighter-jet.png',
-    iconMapping: {
-      airplane: { 
-        x: 0, 
-        y: 0, 
-        width: 512, 
-        height: 512, 
-        mask: true,       
-        anchorY: 256, 
-        anchorX: 256 
+  const layers = useMemo(() => [
+    new IconLayer({
+      id: 'airplane-layer',
+      data: flights,
+      pickable: true,
+      
+      iconAtlas: AIRPLANE_ICON_URL,
+      iconMapping: {
+        airplane: { 
+          x: 0,
+          y: 0, 
+          width: 512, 
+          height: 512, 
+          mask: true, 
+          anchorY: 256, 
+          anchorX: 256 
+        }
+      },
+      
+      getIcon: () => 'airplane',
+      getPosition: (d: IFlight) => [d.longitude, d.latitude],
+      getSize: 30,
+      getColor: (d: IFlight) => hexToRgb(d.color || '#FF4136'),
+      getAngle: (d: IFlight) => -(d.trueTrack || 0),
+      
+      onClick: (info) => setSelectedFlight(info.object as IFlight),
+      
+      transitions: {
+        getPosition: 2000,
+        getAngle: 500
+      },
+      
+      updateTriggers: {
+        getColor: [flights],
+        getAngle: [flights]
       }
-    },
-    getIcon: () => 'airplane',
-    getPosition: (d: any) => [d.longitude, d.latitude],
-    getSize: 25,          
-    getColor: (d: any) => hexToRgb(d.color || '#121002ff'),
-    
-    getAngle: (d: any) => -(d.trueTrack || 0),
-    
-    onClick: (info) => setSelectedFlight(info.object),
-    updateTriggers: {
-      getColor: [flights],
-      getAngle: [flights]
-    }
-  })
-];
+    })
+  ], [flights]);
 
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', margin: 0, overflow: 'hidden' }}>
-      
+    <div 
+      ref={containerRef}
+      style={styles.container}
+    >
       <ModeSelector />
 
-      <DeckGL
-        initialViewState={INITIAL_VIEW_STATE_OF_ISREAL}
-        controller={true}
-        layers={layers}
-        getCursor={() => 'pointer'}
-      >
-        <Map 
-          mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" 
-        />
-      </DeckGL>
+      {isMapReady && (
+        <DeckGL
+          initialViewState={INITIAL_VIEW_STATE}
+          controller={true}
+          layers={layers}
+          getCursor={() => 'pointer'}
+          useDevicePixels={false}
+          parameters={{}}
+          onWebGLInitialized={(gl) => {
+            console.log('WebGL engine started', gl);
+          }}
+        >
+          <Map 
+            mapStyle={MAP_STYLE_URL}
+            reuseMaps={true}
+          />
+        </DeckGL>
+      )}
+
+      {!isMapReady && <LoadingSpinner message="Initializing Radar..." />}
 
       {selectedFlight && (
-        <div style={{
-          position: 'absolute', bottom: 40, left: '50%', transform: 'translateX(-50%)', 
-          background: 'rgba(0,0,0,0.85)', color: 'white', padding: '20px', 
-          borderRadius: '12px', border: '1px solid #444', zIndex: 1001
-        }}>
-          <h3 style={{ margin: '0 0 10px 0' }}>Flight: {selectedFlight.flightId}</h3>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            {COLORS.map(c => (
-              <button
-                key={c.hex}
-                onClick={() => updateColor(c.hex)}
-                style={{
-                  width: '32px', height: '32px', borderRadius: '50%',
-                  backgroundColor: c.hex, border: '2px solid white', cursor: 'pointer'
-                }}
-              />
-            ))}
-          </div>
-          <button onClick={() => setSelectedFlight(null)} style={{ marginTop: '10px', width: '100%' }}>Close</button>
-        </div>
+        <ColorPicker
+          flightId={selectedFlight.flightId}
+          onColorSelect={handleColorSelect}
+          onCancel={() => setSelectedFlight(null)}
+        />
       )}
     </div>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100vw',
+    height: '100vh',
+    margin: 0,
+    overflow: 'hidden',
+    backgroundColor: '#111'
+  }
+};
 
 export default App;

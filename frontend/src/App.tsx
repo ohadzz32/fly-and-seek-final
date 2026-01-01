@@ -5,20 +5,21 @@ import { IconLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
+// Hooks & Types
 import { useFlightData } from './hooks/useFlightData';
 import { useMapReady } from './hooks/useMapReady';
 import { useSystemMode } from './hooks/useSystemMode';
 import { useBirdData } from './hooks/useBirdData';
+import type { IFlight } from './types/Flight.types';
 
+// Components & Utils
 import ModeSelector from './components/ModeSelector';
 import { ColorPicker } from './components/ColorPicker';
 import { LoadingSpinner } from './components/LoadingSpinner';
-
-import type { IFlight } from './types/Flight.types';
-
 import { hexToRgb } from './utils/colorUtils';
 import { INITIAL_VIEW_STATE, MAP_STYLE_URL, AIRPLANE_ICON_URL, BIRD_ICON_URL } from './constants/mapConfig';
 
+// RTL Plugin for MapLibre
 try {
   if (maplibregl.getRTLTextPluginStatus() === 'unavailable') {
     maplibregl.setRTLTextPlugin(
@@ -32,186 +33,187 @@ try {
 
 function App() {
   const { currentMode } = useSystemMode();
-  
-  // Determine if we're in offline mode (showing birds)
   const isOffline = currentMode === 'OFFLINE';
   
-  // Only fetch flights when NOT in offline mode
   const { flights, updateFlightColor, loading: flightsLoading } = useFlightData({ 
     pollInterval: 2000,
     enabled: !isOffline 
   });
   
-  // Only load birds when in offline mode
   const { birds, loading: birdsLoading } = useBirdData(isOffline);
-  
   const isMapReady = useMapReady(150);
 
+  // --- States ---
   const [selectedFlight, setSelectedFlight] = useState<IFlight | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    visible: boolean;
+    aircraft: IFlight | null;
+  }>({ x: 0, y: 0, visible: false, aircraft: null });
+
   const containerRef = useRef<HTMLDivElement>(null);
+  const deckRef = useRef<any>(null);
 
-  // Clear selected flight when switching to offline mode
+  // Close menus when mode changes or clicking outside
   useEffect(() => {
-    if (isOffline && selectedFlight) {
+    if (isOffline) {
       setSelectedFlight(null);
+      setContextMenu(prev => ({ ...prev, visible: false }));
     }
-  }, [isOffline, selectedFlight]);
+  }, [isOffline]);
 
-  const handleColorSelect = async (color: string) => {
-    if (!selectedFlight) return;
+  // Handle Right Click (Context Menu)
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
 
-    try {
-      await updateFlightColor(selectedFlight.flightId, color);
-      setSelectedFlight(null);
-    } catch (error) {
-      console.error('Failed to update flight color:', error);
-      alert('Failed to update flight color. Please try again.');
+    if (!deckRef.current) return;
+
+    const info = deckRef.current.pickObject({
+      x: e.clientX,
+      y: e.clientY,
+      radius: 10,
+      layerIds: ['airplane-layer']
+    });
+
+    if (info && info.object) {
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        visible: true,
+        aircraft: info.object as IFlight
+      });
+    } else {
+      setContextMenu(prev => ({ ...prev, visible: false }));
     }
   };
 
-  // Dynamic layer switching based on mode
   const layers = useMemo(() => {
-    console.log('🔄 Rebuilding layers:', { 
-      currentMode, 
-      isOffline, 
-      birdsCount: birds.length, 
-      flightsCount: flights.length 
-    });
-    
     if (isOffline) {
-      // Offline Mode: Show Birds Layer ONLY if we have bird data
-      if (birdsLoading) {
-        console.log('🐦 OFFLINE MODE: Loading birds...');
-        return [];
-      }
-
-      console.log('🐦 OFFLINE MODE: Creating bird layer with', birds.length, 'birds');
-      if (birds.length === 0) {
-        console.warn('⚠️ No birds data available!');
-        return [];
-      }
-      
       return [
         new IconLayer({
           id: 'bird-layer',
           data: birds,
-          pickable: false, // Birds are not clickable
-          
+          pickable: false,
           iconAtlas: BIRD_ICON_URL,
-          iconMapping: {
-            bird: { 
-              x: 0,
-              y: 0, 
-              width: 512, 
-              height: 512, 
-              mask: true, 
-              anchorY: 256, 
-              anchorX: 256 
-            }
-          },
-          
+          iconMapping: { bird: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
           getIcon: () => 'bird',
-          getPosition: (d: any) => {
-            console.log('🐦 Bird position:', d.longitude, d.latitude);
-            return [d.longitude, d.latitude];
-          },
+          getPosition: (d: any) => [d.longitude, d.latitude],
           getSize: 30,
-          getColor: [46, 204, 64, 255], // Green color for birds
-          
-          transitions: {
-            getPosition: 1000
-          }
-        })
-      ];
-    } else {
-      // Online Mode (SNAP or REALTIME): Show Airplanes Layer ONLY if we have flight data
-      if (flightsLoading && flights.length === 0) {
-        console.log('✈️ ONLINE MODE: Loading flights...');
-        return [];
-      }
-
-      console.log('✈️ ONLINE MODE: Creating airplane layer with', flights.length, 'flights');
-      if (flights.length === 0) {
-        console.warn('⚠️ No flights data available!');
-        return [];
-      }
-      
-      return [
-        new IconLayer({
-          id: 'airplane-layer',
-          data: flights,
-          pickable: true,
-          
-          iconAtlas: AIRPLANE_ICON_URL,
-          iconMapping: {
-            airplane: { 
-              x: 0,
-              y: 0, 
-              width: 512, 
-              height: 512, 
-              mask: true, 
-              anchorY: 256, 
-              anchorX: 256 
-            }
-          },
-          
-          getIcon: () => 'airplane',
-          getPosition: (d: IFlight) => [d.longitude, d.latitude],
-          getSize: 30,
-          getColor: (d: IFlight) => hexToRgb(d.color || '#FF4136'),
-          getAngle: (d: IFlight) => -(d.trueTrack || 0),
-          
-          onClick: (info) => setSelectedFlight(info.object as IFlight),
-          
-          transitions: {
-            getPosition: 2000,
-            getAngle: 500
-          },
-          
-          updateTriggers: {
-            getColor: [flights],
-            getAngle: [flights]
-          }
+          getColor: [46, 204, 64, 255],
+          transitions: { getPosition: 1000 }
         })
       ];
     }
+
+    return [
+      new IconLayer({
+        id: 'airplane-layer',
+        data: flights,
+        pickable: true,
+        iconAtlas: AIRPLANE_ICON_URL,
+        iconMapping: { airplane: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
+        getIcon: () => 'airplane',
+        getPosition: (d: IFlight) => [d.longitude, d.latitude],
+        getSize: 30,
+        getColor: (d: IFlight) => d.isGhost ? [150, 150, 150, 200] : hexToRgb(d.color || '#FF4136'),
+        getAngle: (d: IFlight) => -(d.trueTrack || 0),
+        onClick: (info) => setSelectedFlight(info.object as IFlight),
+        transitions: { getPosition: 2000, getAngle: 500 },
+        updateTriggers: { getColor: [flights], getAngle: [flights] }
+      })
+    ];
   }, [isOffline, birds, flights]);
 
   return (
     <div 
       ref={containerRef}
       style={styles.container}
+      onClick={() => setContextMenu(prev => ({ ...prev, visible: false }))}
+      onContextMenu={handleContextMenu}
     >
       <ModeSelector />
 
       {isMapReady && (
         <DeckGL
+          ref={deckRef}
           initialViewState={INITIAL_VIEW_STATE}
           controller={true}
           layers={layers}
-          getCursor={() => 'pointer'}
-          useDevicePixels={false}
-          parameters={{}}
-          onWebGLInitialized={(gl) => {
-            console.log('WebGL engine started', gl);
-          }}
+          getCursor={({ isHovering }) => isHovering ? 'pointer' : 'grab'}
         >
-          <Map 
-            mapStyle={MAP_STYLE_URL}
-            reuseMaps={true}
-          />
+          <Map mapStyle={MAP_STYLE_URL} reuseMaps={true} />
         </DeckGL>
       )}
 
-      {!isMapReady && <LoadingSpinner message="Initializing Radar..." />}
+      {!isMapReady && <LoadingSpinner message="אתחול מערכת רדאר..." />}
+
+      {/* --- Context Menu מעוצב ואחיד --- */}
+      {contextMenu.visible && contextMenu.aircraft && (
+        <div 
+          className="radar-menu"
+          style={{
+            ...styles.contextMenu,
+            top: contextMenu.y - 10,
+            left: contextMenu.x + 10,
+          }}
+          onClick={(e) => e.stopPropagation()} 
+        >
+          <div style={styles.menuHeader}>
+            מטוס: {contextMenu.aircraft.flightId}
+          </div>
+          
+          {/* אפשרות 1 - חיפוש רגיל */}
+          <div 
+            style={{
+              ...styles.menuItem,
+              color: contextMenu.aircraft.isGhost ? '#00ff88' : '#fff'
+            }}
+            className="menu-item-hover"
+            onClick={() => {
+              console.log("Toggle Search Zone for:", contextMenu.aircraft?.flightId);
+              setContextMenu(prev => ({ ...prev, visible: false }));
+            }}
+          >
+            <span style={{ marginLeft: '10px', fontSize: '16px' }}>
+              {contextMenu.aircraft.isGhost ? '●' : '○'}
+            </span>
+            <span>פתח אזור חיפוש רגיל</span>
+            {contextMenu.aircraft.isGhost && <span style={{ marginRight: 'auto', color: '#00ff88' }}>✓</span>}
+          </div>
+
+          {/* אפשרות 2 - חיפוש חכם (זהה לחלוטין בעיצוב) */}
+          <div 
+            style={{ ...styles.menuItem, ...styles.disabledItem }}
+            className="menu-item-hover"
+            onClick={() => {
+              console.log("Smart Search clicked");
+              setContextMenu(prev => ({ ...prev, visible: false }));
+            }}
+          >
+            <span style={{ marginLeft: '10px', fontSize: '16px' }}>○</span>
+            <span>פתח אזור חיפוש חכם</span>
+          </div>
+        </div>
+      )}
 
       {selectedFlight && !isOffline && (
         <ColorPicker
           flightId={selectedFlight.flightId}
-          onColorSelect={handleColorSelect}
+          onColorSelect={async (color) => {
+             await updateFlightColor(selectedFlight.flightId, color);
+             setSelectedFlight(null);
+          }}
           onCancel={() => setSelectedFlight(null)}
         />
       )}
+
+      <style>{`
+        .radar-menu { animation: menuAppear 0.15s ease-out; backdrop-filter: blur(12px); }
+        .menu-item-hover:hover { background-color: rgba(255, 255, 255, 0.1); }
+        @keyframes menuAppear { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+      `}</style>
     </div>
   );
 }
@@ -219,16 +221,44 @@ function App() {
 const styles: Record<string, React.CSSProperties> = {
   container: {
     position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100vw',
-    height: '100vh',
-    margin: 0,
-    overflow: 'hidden',
-    backgroundColor: '#111'
+    top: 0, left: 0, right: 0, bottom: 0,
+    width: '100vw', height: '100vh',
+    backgroundColor: '#0a0a0a',
+    overflow: 'hidden'
+  },
+  contextMenu: {
+    position: 'fixed',
+    minWidth: '200px',
+    backgroundColor: 'rgba(30, 30, 30, 0.85)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '8px',
+    boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+    zIndex: 10000,
+    direction: 'rtl',
+    padding: '6px'
+  },
+  menuHeader: {
+    padding: '8px 12px',
+    fontSize: '10px',
+    color: '#777',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+    marginBottom: '4px',
+    fontWeight: 'bold',
+    letterSpacing: '1px'
+  },
+  menuItem: {
+    padding: '10px 12px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    display: 'flex',
+    alignItems: 'center',
+    borderRadius: '4px',
+    transition: 'background 0.2s',
+  },
+  disabledItem: {
+    color: '#555',
+    cursor: 'pointer',
   }
 };
 
-export default App;
+export default App; 

@@ -1,11 +1,3 @@
-/**
- * Type Definitions for Flight Domain
- * Shared types between frontend components
- */
-
-/**
- * Flight data structure matching backend model
- */
 export interface IFlight {
   flightId: string;
   latitude: number;
@@ -14,23 +6,31 @@ export interface IFlight {
   trueTrack: number;
   color: string;
   lastUpdated?: string;
+  isGhost? : boolean;
+  isFrozen? : boolean;
+  searchRadius?: number;
+
 }
 
-/**
- * Color option for UI
- */
+
 export interface ColorOption {
   name: string;
   hex: string;
 }
 
-/**
- * View state for map
- */
+
 export interface ViewState {
   longitude: number;
   latitude: number;
   zoom: number;
   pitch: number;
   bearing: number;
+}
+
+
+export interface ContextMenuState {
+  mouseX: number;
+  mouseY: number;
+  visible: boolean;
+  aircraftId: string | null;
 }

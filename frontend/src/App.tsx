@@ -35,12 +35,12 @@ function App() {
   const { currentMode } = useSystemMode();
   const isOffline = currentMode === 'OFFLINE';
   
-  const { flights, updateFlightColor, loading: flightsLoading } = useFlightData({ 
+  const { flights, updateFlightColor } = useFlightData({ 
     pollInterval: 2000,
     enabled: !isOffline 
   });
   
-  const { birds, loading: birdsLoading } = useBirdData(isOffline);
+  const { birds } = useBirdData(isOffline);
   const isMapReady = useMapReady(150);
 
   // --- States ---

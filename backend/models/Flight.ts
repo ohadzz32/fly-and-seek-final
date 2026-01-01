@@ -1,5 +1,3 @@
-
-
 import mongoose, { Schema, Document } from 'mongoose';
 import { IFlight } from './Flight.types';
 
@@ -50,9 +48,10 @@ const flightSchema = new Schema<IFlightDocument>(
         message: 'Color must be a valid hex color code'
       }
     },
-    lastUpdated: {
-      type: Date,
-      default: Date.now
+    isGhost: {
+      type : Boolean,
+      required: true,
+      default: false
     }
   },
   {

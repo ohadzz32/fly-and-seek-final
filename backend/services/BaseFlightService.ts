@@ -30,7 +30,7 @@ export abstract class BaseFlightService implements IFlightService {
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     if (!this.isRunning) {
       logger.warn(`${this.mode} service is not running`);
       return;
@@ -38,7 +38,7 @@ export abstract class BaseFlightService implements IFlightService {
 
     try {
       logger.info(`Stopping ${this.mode} service`);
-      this.cleanup();
+      await this.cleanup();
       this.isRunning = false;
       logger.info(`${this.mode} service stopped successfully`);
     } catch (error) {
@@ -52,7 +52,7 @@ export abstract class BaseFlightService implements IFlightService {
 
   protected abstract initialize(): Promise<void>;
 
-  protected abstract cleanup(): void;
+  protected abstract cleanup(): Promise<void>;
 
   protected clearInterval(): void {
     if (this.intervalId) {

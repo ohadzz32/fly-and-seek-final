@@ -1,5 +1,3 @@
-
-
 import { Request, Response } from 'express';
 import { DIContainer } from '../container/DIContainer';
 import { NotFoundError } from '../utils/errors';

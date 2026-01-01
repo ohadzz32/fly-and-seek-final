@@ -105,7 +105,12 @@ export class OfflineService extends BaseFlightService {
   }
 
   
-  protected cleanup(): void {
-    logger.info('Offline service cleanup completed (no resources to release)');
+  protected async cleanup(): Promise<void> {
+    try {
+      await this.repository.deleteAll();
+      logger.info('Offline service cleanup completed (database cleared)');
+    } catch (error) {
+      logger.error('Failed to cleanup offline service', { error });
+    }
   }
 }

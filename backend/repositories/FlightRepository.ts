@@ -1,5 +1,3 @@
-
-
 import { Flight } from '../models/Flight';
 import { IFlightRepository } from '../interfaces/IFlightRepository';
 import { IFlight } from '../models/Flight.types';

@@ -1,5 +1,3 @@
-
-
 import { Router } from 'express';
 import { FlightController } from '../controllers/FlightController';
 import { ConfigController } from '../controllers/ConfigController';
@@ -15,12 +13,8 @@ import {
 export function configureRoutes(serviceManager: ServiceManager): Router {
   const router = Router();
   
-  // Initialize controllers
   const flightController = new FlightController();
-  const configController = new ConfigController(serviceManager);
-
-  // ================== Config Routes ==================
-  
+  const configController = new ConfigController(serviceManager);  
   
   router.get(
     '/config/mode',
@@ -33,8 +27,6 @@ export function configureRoutes(serviceManager: ServiceManager): Router {
     validateModeChange,
     asyncHandler(async (req, res) => configController.changeMode(req, res))
   );
-
-  // ================== Flight Routes ==================
 
   
   router.get(

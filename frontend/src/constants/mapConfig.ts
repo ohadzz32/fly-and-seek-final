@@ -1,11 +1,11 @@
 import type { ViewState, ColorOption } from '../types/Flight.types';
 
-export const INITIAL_VIEW_STATE: ViewState = {
+export const INITIAL_VIEW_STATE = {
   longitude: 34.8,
-  latitude: 31.5,
-  zoom: 6,
+  latitude: 32.1,
+  zoom: 7,
   pitch: 0,
-  bearing: 0
+  bearing: 0,
 };
 
 export const COLOR_OPTIONS: ColorOption[] = [
@@ -19,3 +19,5 @@ export const COLOR_OPTIONS: ColorOption[] = [
 export const MAP_STYLE_URL = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
 export const AIRPLANE_ICON_URL = 'https://img.icons8.com/ios-filled/512/FFFFFF/fighter-jet.png';
+
+export const BIRD_ICON_URL = 'https://img.icons8.com/ios-filled/512/FFFFFF/bird.png';

@@ -1,5 +1,3 @@
-
-
 import { IFlightRepository } from '../interfaces/IFlightRepository';
 import { FlightRepository } from '../repositories/FlightRepository';
 import { FlightServiceFactory } from '../factories/FlightServiceFactory';

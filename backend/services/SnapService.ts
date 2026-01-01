@@ -35,7 +35,11 @@ export class SnapService extends BaseFlightService {
 
   
   protected async initialize(): Promise<void> {
-    await this.takeSnapshot();
+    try {
+      await this.takeSnapshot();
+    } catch (error) {
+      logger.error('Failed to take snapshot, starting with empty state', { error });
+    }
     this.startSimulation();
   }
 
@@ -171,9 +175,14 @@ export class SnapService extends BaseFlightService {
   }
 
   
-  protected cleanup(): void {
+  protected async cleanup(): Promise<void> {
     this.clearInterval();
     this.simulatedFlights = [];
-    logger.info('Snap service simulation stopped and state cleared');
+    try {
+      await this.repository.deleteAll();
+      logger.info('Snap service cleanup completed (database cleared)');
+    } catch (error) {
+      logger.error('Failed to cleanup snap service', { error });
+    }
   }
 }

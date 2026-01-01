@@ -28,7 +28,7 @@ export class ServiceManager {
       // Stop current service if running
       if (this.currentService) {
         logger.info(`Stopping ${this.currentService.mode} service`);
-        this.currentService.stop();
+        await this.currentService.stop();
         this.currentService = null;
       }
 

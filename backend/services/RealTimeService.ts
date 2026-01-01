@@ -1,5 +1,3 @@
-
-
 import { RunMode } from './FlightService.types';
 import { BaseFlightService } from './BaseFlightService';
 import { IFlightRepository } from '../interfaces/IFlightRepository';
@@ -163,8 +161,13 @@ export class RealTimeService extends BaseFlightService {
   }
 
   
-  protected cleanup(): void {
+  protected async cleanup(): Promise<void> {
     this.clearInterval();
-    logger.info('Real-time service interval cleared');
+    try {
+      await this.repository.deleteAll();
+      logger.info('Real-time service cleanup completed (database cleared)');
+    } catch (error) {
+      logger.error('Failed to cleanup real-time service', { error });
+    }
   }
 }

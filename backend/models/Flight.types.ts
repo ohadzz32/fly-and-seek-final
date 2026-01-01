@@ -1,18 +1,15 @@
-
-
-
-export interface IFlight {
+export interface IFlight { //DB
   flightId: string;
   latitude: number;
   longitude: number;
   velocity: number;
   trueTrack: number;
   color: string;
-  lastUpdated?: Date;
+  isGhost?: boolean;
 }
 
 
-export interface FlightDTO {
+export interface FlightDTO { //api
   flightId: string;
   latitude: number;
   longitude: number;

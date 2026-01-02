@@ -1,81 +1,55 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { FlightAPIService } from '../services/FlightAPIService';
 import type { IFlight } from '../types/Flight.types';
-import { FlightAPIService, APIError } from '../services/FlightAPIService';
 
-interface UseFlightDataReturn {
-  flights: IFlight[];
-  loading: boolean;
-  error: string | null;
-  refetch: () => Promise<void>;
-  updateFlightColor: (flightId: string, color: string) => Promise<void>;
-}
-
-interface UseFlightDataOptions {
-  pollInterval?: number;
-  enabled?: boolean;
-}
-
-export function useFlightData(
-  options: UseFlightDataOptions = {}
-): UseFlightDataReturn {
-  const { pollInterval = 2000, enabled = true } = options;
-
+export const useFlightData = () => {
   const [flights, setFlights] = useState<IFlight[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchFlights = useCallback(async () => {
+  const fetchFlights = async () => {
     try {
-      setError(null);
       const data = await FlightAPIService.getFlights();
       setFlights(data);
+      setError(null);
     } catch (err) {
-      const errorMessage = err instanceof APIError 
-        ? err.message 
-        : 'Failed to fetch flights';
-      setError(errorMessage);
-      console.error('Error fetching flights:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch flights');
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  const updateFlightColor = useCallback(async (flightId: string, color: string) => {
+  const updateFlightColor = async (flightId: string, color: string) => {
     try {
       await FlightAPIService.updateFlightColor(flightId, color);
-      
-      // Optimistically update local state
-      setFlights(prevFlights => 
-        prevFlights.map(flight => 
-          flight.flightId === flightId 
-            ? { ...flight, color } 
-            : flight
-        )
+      setFlights(prev => 
+        prev.map(f => f.flightId === flightId ? { ...f, color } : f)
       );
     } catch (err) {
-      const errorMessage = err instanceof APIError 
-        ? err.message 
-        : 'Failed to update flight color';
-      setError(errorMessage);
-      throw err;
+      setError(err instanceof Error ? err.message : 'Failed to update color');
     }
-  }, []);
+  };
+
+  const toggleGhostMode = async (flightId: string) => {
+    try {
+      await FlightAPIService.toggleGhostStatus(flightId);
+      await fetchFlights(); 
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle ghost mode');
+    }
+  };
 
   useEffect(() => {
-    if (!enabled) return;
-
     fetchFlights();
-
-    const interval = setInterval(fetchFlights, pollInterval);
-
+    const interval = setInterval(fetchFlights, 5000);
     return () => clearInterval(interval);
-  }, [fetchFlights, pollInterval, enabled]);
+  }, []);
 
   return {
     flights,
     loading,
     error,
-    refetch: fetchFlights,
-    updateFlightColor
+    updateFlightColor,
+    toggleGhostMode
   };
-}
+};

@@ -3,6 +3,7 @@ import { FlightController } from '../controllers/FlightController';
 import { ConfigController } from '../controllers/ConfigController';
 import { ServiceManager } from '../managers/ServiceManager';
 import { asyncHandler } from '../middleware/errorMiddleware';
+
 import { 
   validateModeChange, 
   validateColorUpdate, 
@@ -26,6 +27,12 @@ export function configureRoutes(serviceManager: ServiceManager): Router {
     '/config/mode',
     validateModeChange,
     asyncHandler(async (req, res) => configController.changeMode(req, res))
+  );
+
+  router.post(
+    '/flights/:id/toggle-ghost',
+    validateFlightIdParam, 
+    asyncHandler((req, res) => flightController.toggleGhostStatus(req, res))
   );
 
   

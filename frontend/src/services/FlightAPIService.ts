@@ -62,6 +62,12 @@ export class FlightAPIService {
     });
   }
 
+  static async toggleGhostStatus(flightId: string): Promise<void> {
+    await this.fetchJSON<{ success: boolean }>(`/flights/${flightId}/toggle-ghost`, {
+      method: 'POST'
+    });
+  }
+
   static async getCurrentMode(): Promise<RunMode> {
     const response = await this.fetchJSON<{ mode: RunMode }>('/config/mode');
     return response.mode;

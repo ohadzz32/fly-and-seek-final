@@ -70,4 +70,32 @@ export class FlightRepository implements IFlightRepository {
       throw new AppError('Delete operation failed', 500, error as Error);
     }
   }
+
+  async deleteOne(flightId: string): Promise<void> {
+    try {
+      const result = await Flight.deleteOne({ flightId });
+      if (result.deletedCount > 0) {
+        logger.info(`Deleted flight: ${flightId}`);
+      }
+    } catch (error) {
+      logger.error(`Failed to delete flight: ${flightId}`, { error });
+      throw new AppError('Delete operation failed', 500, error as Error);
+    }
+  }
+
+  async create(flightData: Partial<IFlight>): Promise<IFlight> {
+    try {
+      const flight = await Flight.findOneAndUpdate(
+        { flightId: flightData.flightId },
+        { $set: flightData },
+        { new: true, upsert: true, runValidators: true }
+      ).lean().exec();
+
+      logger.info(`Flight ${flightData.flightId} created/updated via upsert`);
+      return flight as IFlight;
+    } catch (error) {
+      logger.error(`Failed to create flight: ${flightData.flightId}`, { error });
+      throw new AppError('Create operation failed', 500, error as Error);
+    }
+  }
 }

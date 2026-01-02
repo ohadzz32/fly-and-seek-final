@@ -35,10 +35,11 @@ function App() {
   const { currentMode } = useSystemMode();
   const isOffline = currentMode === 'OFFLINE';
   
-  const { flights, updateFlightColor } = useFlightData({ 
-    pollInterval: 2000,
-    enabled: !isOffline 
-  });
+  const { 
+    flights, 
+    updateFlightColor, 
+    toggleGhostMode 
+  } = useFlightData();
   
   const { birds } = useBirdData(isOffline);
   const isMapReady = useMapReady(150);
@@ -143,7 +144,10 @@ function App() {
           layers={layers}
           getCursor={({ isHovering }) => isHovering ? 'pointer' : 'grab'}
         >
-          <Map mapStyle={MAP_STYLE_URL} reuseMaps={true} />
+          <Map 
+            mapStyle={MAP_STYLE_URL} 
+            reuseMaps={true}
+          />
         </DeckGL>
       )}
 
@@ -171,15 +175,23 @@ function App() {
               color: contextMenu.aircraft.isGhost ? '#00ff88' : '#fff'
             }}
             className="menu-item-hover"
-            onClick={() => {
-              console.log("Toggle Search Zone for:", contextMenu.aircraft?.flightId);
-              setContextMenu(prev => ({ ...prev, visible: false }));
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (contextMenu.aircraft && toggleGhostMode) {
+                try {
+                  await toggleGhostMode(contextMenu.aircraft.flightId);
+                } catch (error) {
+                  console.error('Failed to toggle ghost mode:', error);
+                } finally {
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }
+              }
             }}
           >
             <span style={{ marginLeft: '10px', fontSize: '16px' }}>
               {contextMenu.aircraft.isGhost ? '●' : '○'}
             </span>
-            <span>פתח אזור חיפוש רגיל</span>
+            <span>{contextMenu.aircraft.isGhost ? 'בטל מצב רפאים' : 'הפעל מצב רפאים'}</span>
             {contextMenu.aircraft.isGhost && <span style={{ marginRight: 'auto', color: '#00ff88' }}>✓</span>}
           </div>
 

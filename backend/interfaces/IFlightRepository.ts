@@ -18,4 +18,8 @@ export interface IFlightRepository {
 
   
   deleteAll(): Promise<void>;
+
+  deleteOne(flightId: string): Promise<void>;
+
+  create(flightData: Partial<IFlight>): Promise<IFlight>;
 }

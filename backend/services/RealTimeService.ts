@@ -139,23 +139,45 @@ export class RealTimeService extends BaseFlightService {
   }
 
   
-  private async updateFlightsInDatabase(flights: FlightDTO[]): Promise<void> {
-    const bulkOps = flights.map(flight => ({
-      updateOne: {
-        filter: { flightId: flight.flightId },
-        update: {
-          $set: {
-            longitude: flight.longitude,
-            latitude: flight.latitude,
-            velocity: flight.velocity,
-            trueTrack: flight.trueTrack,
-            lastUpdated: new Date()
+private async updateFlightsInDatabase(flights: FlightDTO[]): Promise<void> {
+    const bulkOps = flights.flatMap(flight => [
+      {
+        updateOne: {
+          filter: { 
+            flightId: flight.flightId,
+            isGhost: { $ne: true } 
           },
-          $setOnInsert: { color: this.DEFAULT_COLOR }
-        },
-        upsert: true
+          update: {
+            $set: {
+              longitude: flight.longitude,
+              latitude: flight.latitude,
+              velocity: flight.velocity,
+              trueTrack: flight.trueTrack,
+              lastUpdated: new Date()
+            },
+            $setOnInsert: { color: this.DEFAULT_COLOR }
+          },
+          upsert: true
+        }
+      },
+      {
+        updateOne: {
+          filter: { 
+            flightId: `${flight.flightId}-shadow`,
+            isGhost: false
+          },
+          update: {
+            $set: {
+              longitude: flight.longitude,
+              latitude: flight.latitude,
+              velocity: flight.velocity,
+              trueTrack: flight.trueTrack,
+              lastUpdated: new Date()
+            }
+          }
+        }
       }
-    }));
+    ]);
 
     await this.repository.bulkWrite(bulkOps);
   }

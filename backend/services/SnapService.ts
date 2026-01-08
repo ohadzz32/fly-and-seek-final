@@ -94,7 +94,7 @@
     private startSimulation(): void {
       this.intervalId = setInterval(
         () => this.simulateMovementStep(),
-        this.TIME_STEP_SECONDS * 1000
+        this.TIME_STEP_SECONDS * 19000
       );
 
       logger.info(`Simulation started with ${this.TIME_STEP_SECONDS}s time steps`);

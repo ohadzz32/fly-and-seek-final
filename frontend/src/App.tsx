@@ -195,13 +195,22 @@ function App() {
             {contextMenu.aircraft.isGhost && <span style={{ marginRight: 'auto', color: '#00ff88' }}>✓</span>}
           </div>
 
-          {/* אפשרות 2 - חיפוש חכם (זהה לחלוטין בעיצוב) */}
+          {/* אפשרות 2 - חיפוש חכם */}
           <div 
-            style={{ ...styles.menuItem, ...styles.disabledItem }}
+            style={{
+              ...styles.menuItem,
+              color: '#fff'
+            }}
             className="menu-item-hover"
-            onClick={() => {
-              console.log("Smart Search clicked");
-              setContextMenu(prev => ({ ...prev, visible: false }));
+            onClick={async (e) => {
+              e.stopPropagation();
+              try {
+                console.log("Smart Search clicked");
+              } catch (error) {
+                console.error('Failed to open smart search:', error);
+              } finally {
+                setContextMenu(prev => ({ ...prev, visible: false }));
+              }
             }}
           >
             <span style={{ marginLeft: '10px', fontSize: '16px' }}>○</span>

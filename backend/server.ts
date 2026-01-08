@@ -42,7 +42,6 @@ class FlightTrackingServer {
   }
 
   private configureMiddleware(): void {
-    // CORS configuration
     this.app.use(cors({
       origin: this.config.corsOrigins,
       credentials: true,
@@ -50,7 +49,6 @@ class FlightTrackingServer {
       allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // Body parsing
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
 

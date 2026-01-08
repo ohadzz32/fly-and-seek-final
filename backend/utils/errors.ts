@@ -14,10 +14,8 @@ export class AppError extends Error {
     this.isOperational = isOperational;
     this.originalError = originalError;
 
-    // Maintains proper stack trace for debugging
     Error.captureStackTrace(this, this.constructor);
     
-    // Set prototype explicitly for proper instanceof checks
     Object.setPrototypeOf(this, AppError.prototype);
   }
 }

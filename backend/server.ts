@@ -56,13 +56,12 @@ class FlightTrackingServer {
   }
 
   private configureRoutes(): void {
-    // Mount API routes
     this.app.use('/api', configureRoutes(this.serviceManager));
 
-    // 404 handler for undefined routes
+    
     this.app.use(notFoundHandler);
 
-    // Global error handler (must be last)
+    
     this.app.use(errorHandler);
 
     logger.info('Routes configured');
@@ -103,10 +102,9 @@ class FlightTrackingServer {
       logger.info(`\n${signal} received, shutting down gracefully...`);
 
       try {
-        // Stop current service
         this.serviceManager.stopCurrentService();
 
-        // Close database connection
+        
         await mongoose.connection.close();
         logger.info('Database connection closed');
 
@@ -126,20 +124,15 @@ class FlightTrackingServer {
     try {
       logger.info('🚀 Starting Flight Tracking Server...');
 
-      // Configure Express
       this.configureMiddleware();
       this.configureRoutes();
 
-      // Connect to database
       await this.connectDatabase();
 
-      // Initialize default service
       await this.initializeDefaultService();
 
-      // Start HTTP server
       await this.startServer();
 
-      // Setup graceful shutdown
       this.setupGracefulShutdown();
 
       logger.info('✅ Server initialization complete');

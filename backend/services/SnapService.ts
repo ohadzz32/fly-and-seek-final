@@ -86,7 +86,7 @@
         state[5] !== null &&  // longitude
         state[6] !== null &&  // latitude
         state[9] !== null &&  // velocity
-        state[10] !== null    // true_track
+        state[10] !== null   // true_track
       );
     }
 
@@ -94,7 +94,7 @@
     private startSimulation(): void {
       this.intervalId = setInterval(
         () => this.simulateMovementStep(),
-        this.TIME_STEP_SECONDS * 19000
+        this.TIME_STEP_SECONDS * 19000   // the time step of the simulation
       );
 
       logger.info(`Simulation started with ${this.TIME_STEP_SECONDS}s time steps`);

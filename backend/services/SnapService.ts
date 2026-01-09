@@ -1,5 +1,3 @@
-
-
   import { RunMode } from './FlightService.types';
   import { BaseFlightService } from './BaseFlightService';
   import { IFlightRepository } from '../interfaces/IFlightRepository';
@@ -108,12 +106,10 @@
       }
 
       try {
-        // Update positions for all flights
         this.simulatedFlights.forEach(flight => {
           this.updateFlightPosition(flight);
         });
 
-        // Save to database
         await this.saveSimulatedFlights();
 
         logger.info(`Simulation step completed: ${this.simulatedFlights.length} planes moved`);

@@ -41,27 +41,27 @@ export class FlightController {
     });
   }
 
-async toggleGhostStatus(req: Request, res: Response): Promise<void> {
+async toggleGhostStatus(req: Request, res: Response): Promise<void> { // ghost mode on/off
   try {
     const { id } = req.params;
-    const flight = await this.repository.findById(id);
+    const flight = await this.repository.findById(id); // find the fight by id
 
     if (!flight) {
-      res.status(404).json({ message: 'Flight not found in the DB' });
+      res.status(404).json({ message: 'Flight not found in the DB' });    // if the flight is not found 
       return;
     }
 
-    if (!flight.isGhost) {
+    if (!flight.isGhost) {  
       await this.repository.updateOne(id, { isGhost: true });
 
       const shadowId = `${flight.flightId}-shadow`;
-      const shadowData = {
+      const shadowData = {    
         flightId: shadowId,
         longitude: flight.longitude,
         latitude: flight.latitude,
         velocity: flight.velocity,
         trueTrack: flight.trueTrack,
-        color: '#808080',
+        color: '#999696ff',
         isGhost: false
       };
 

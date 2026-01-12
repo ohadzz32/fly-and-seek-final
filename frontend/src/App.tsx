@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, use } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Map } from 'react-map-gl/maplibre';
 import { IconLayer } from '@deck.gl/layers';
@@ -46,6 +46,7 @@ function App() {
 
   // --- States ---
   const [selectedFlight, setSelectedFlight] = useState<IFlight | null>(null);
+  const [ staticGhosts, setStaticGhosts ] = useState<IFlight[]>([]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -90,42 +91,66 @@ function App() {
     }
   };
 
-  const layers = useMemo(() => {
-    if (isOffline) {
-      return [
-        new IconLayer({
-          id: 'bird-layer',
-          data: birds,
-          pickable: false,
-          iconAtlas: BIRD_ICON_URL,
-          iconMapping: { bird: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
-          getIcon: () => 'bird',
-          getPosition: (d: any) => [d.longitude, d.latitude],
-          getSize: 30,
-          getColor: [46, 204, 64, 255],
-          transitions: { getPosition: 1000 }
-        })
-      ];
-    }
-
+const layers = useMemo(() => {
+  // 1. מצב אופליין - מחזיר מערך עם שכבה אחת ויוצא מהפונקציה
+  if (isOffline) {
     return [
       new IconLayer({
-        id: 'airplane-layer',
-        data: flights,
+        id: 'bird-layer',
+        data: birds,
+        pickable: false,
+        iconAtlas: BIRD_ICON_URL,
+        iconMapping: { bird: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
+        getIcon: () => 'bird',
+        getPosition: (d: any) => [d.longitude, d.latitude],
+        getSize: 30,
+        getColor: [46, 204, 64, 255],
+        transitions: { getPosition: 1000 }
+      })
+    ];
+  }
+
+  // 2. הגדרת המערך בחוץ כדי שיהיה נגיש לכל אורך הבלוק
+  const activeLayers: any[] = [
+    new IconLayer({
+      id: 'airplane-layer',
+      data: flights,
+      pickable: true,
+      iconAtlas: AIRPLANE_ICON_URL,
+      iconMapping: { airplane: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
+      getIcon: () => 'airplane',
+      getPosition: (d: IFlight) => [d.longitude, d.latitude],
+      getSize: 30,
+      getColor: (d: IFlight) => d.isGhost ? [160, 160, 160, 200] : hexToRgb(d.color || '#FF4136'),
+      getAngle: (d: IFlight) => -(d.trueTrack || 0),
+      onClick: (info) => setSelectedFlight(info.object as IFlight),
+      transitions: { getPosition: 2000, getAngle: 500 },
+      updateTriggers: { getColor: [flights], getAngle: [flights] }
+    })
+  ];
+
+  // 3. הזרקת מטוסי הרפאים הסטטיים למערך הקיים
+  if (staticGhosts && staticGhosts.length > 0) {
+    activeLayers.push(
+      new IconLayer({
+        id: 'static-ghost-layer',
+        data: staticGhosts,
         pickable: true,
         iconAtlas: AIRPLANE_ICON_URL,
         iconMapping: { airplane: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
         getIcon: () => 'airplane',
         getPosition: (d: IFlight) => [d.longitude, d.latitude],
         getSize: 30,
-        getColor: (d: IFlight) => d.isGhost ? [150, 150, 150, 200] : hexToRgb(d.color || '#FF4136'),
+        getColor: [160, 160, 160, 150], 
         getAngle: (d: IFlight) => -(d.trueTrack || 0),
-        onClick: (info) => setSelectedFlight(info.object as IFlight),
-        transitions: { getPosition: 2000, getAngle: 500 },
-        updateTriggers: { getColor: [flights], getAngle: [flights] }
       })
-    ];
-  }, [isOffline, birds, flights]);
+    );
+  }
+
+  // 4. החזרת המערך המלא (שכבה אחת או שתיים)
+  return activeLayers;
+
+}, [isOffline, birds, flights, staticGhosts]);
 
   return (
     <div 
@@ -177,14 +202,14 @@ function App() {
             className="menu-item-hover"
             onClick={async (e) => {
               e.stopPropagation();
-              if (contextMenu.aircraft && toggleGhostMode) {
-                try {
-                  await toggleGhostMode(contextMenu.aircraft.flightId);
-                } catch (error) {
-                  console.error('Failed to toggle ghost mode:', error);
-                } finally {
-                  setContextMenu(prev => ({ ...prev, visible: false }));
-                }
+              if (contextMenu.aircraft) {
+                const ghostSnapshot: IFlight = {
+                 ...contextMenu.aircraft, 
+                 flightId: `${contextMenu.aircraft.flightId}-ghost-${Date.now()}`,
+                 isGhost: false 
+                };
+                setStaticGhosts(prev => [...prev, ghostSnapshot]);
+                setContextMenu(prev => ({ ...prev, visible: false }));
               }
             }}
           >

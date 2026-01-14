@@ -1,7 +1,7 @@
-import React, { useState, useRef, useMemo, useEffect, use } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Map } from 'react-map-gl/maplibre';
-import { IconLayer } from '@deck.gl/layers';
+import { IconLayer, ScatterplotLayer, LineLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -19,7 +19,7 @@ import { LoadingSpinner } from './components/LoadingSpinner';
 import { hexToRgb } from './utils/colorUtils';
 import { INITIAL_VIEW_STATE, MAP_STYLE_URL, AIRPLANE_ICON_URL, BIRD_ICON_URL } from './constants/mapConfig';
 
-// RTL Plugin for MapLibre
+// RTL Plugin
 try {
   if (maplibregl.getRTLTextPluginStatus() === 'unavailable') {
     maplibregl.setRTLTextPlugin(
@@ -34,19 +34,16 @@ try {
 function App() {
   const { currentMode } = useSystemMode();
   const isOffline = currentMode === 'OFFLINE';
-  
-  const { 
-    flights, 
-    updateFlightColor, 
-    toggleGhostMode 
-  } = useFlightData();
-  
+
+  const { flights, updateFlightColor } = useFlightData();
   const { birds } = useBirdData(isOffline);
   const isMapReady = useMapReady(150);
 
   // --- States ---
   const [selectedFlight, setSelectedFlight] = useState<IFlight | null>(null);
-  const [ staticGhosts, setStaticGhosts ] = useState<IFlight[]>([]);
+  const [staticGhosts, setStaticGhosts] = useState<any[]>([]);
+  const [ghostClock, setGhostClock] = useState(Date.now()); // "הדופק" שמניע את הרדיוס
+  
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -54,10 +51,16 @@ function App() {
     aircraft: IFlight | null;
   }>({ x: 0, y: 0, visible: false, aircraft: null });
 
-  const containerRef = useRef<HTMLDivElement>(null);
   const deckRef = useRef<any>(null);
 
-  // Close menus when mode changes or clicking outside
+  // עדכון השעון כל 100 מילישניות עבור אנימציה חלקה של העיגול
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setGhostClock(Date.now());
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     if (isOffline) {
       setSelectedFlight(null);
@@ -65,73 +68,86 @@ function App() {
     }
   }, [isOffline]);
 
-  // Handle Right Click (Context Menu)
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-
     if (!deckRef.current) return;
 
+    // הגדרת זיהוי קליק ימני גם על השכבה הרגילה וגם על המטוס הקפוא
     const info = deckRef.current.pickObject({
       x: e.clientX,
       y: e.clientY,
       radius: 10,
-      layerIds: ['airplane-layer']
+      layerIds: ['airplane-layer', 'static-ghost-layer']
     });
 
     if (info && info.object) {
+      // אם לחצנו על מטוס קפוא, נשלוף את המידע המקורי שלו לצורך התפריט
+      const aircraftData = info.object.originalId 
+        ? flights.find(f => f.flightId === info.object.originalId) || info.object
+        : info.object;
+
       setContextMenu({
         x: e.clientX,
         y: e.clientY,
         visible: true,
-        aircraft: info.object as IFlight
+        aircraft: aircraftData as IFlight
       });
     } else {
       setContextMenu(prev => ({ ...prev, visible: false }));
     }
   };
 
-const layers = useMemo(() => {
-  // 1. מצב אופליין - מחזיר מערך עם שכבה אחת ויוצא מהפונקציה
-  if (isOffline) {
+  const layers = useMemo(() => {
+    if (isOffline) {
+      return [
+        new IconLayer({
+          id: 'bird-layer',
+          data: birds,
+          iconAtlas: BIRD_ICON_URL,
+          iconMapping: { bird: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
+          getIcon: () => 'bird',
+          getPosition: (d: any) => [d.longitude, d.latitude],
+          getSize: 30,
+          getColor: [46, 204, 64, 255],
+        })
+      ];
+    }
+
     return [
-      new IconLayer({
-        id: 'bird-layer',
-        data: birds,
-        pickable: false,
-        iconAtlas: BIRD_ICON_URL,
-        iconMapping: { bird: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
-        getIcon: () => 'bird',
-        getPosition: (d: any) => [d.longitude, d.latitude],
-        getSize: 30,
-        getColor: [46, 204, 64, 255],
-        transitions: { getPosition: 1000 }
-      })
-    ];
-  }
+      // 1. שכבת העיגול המתרחב (Scatterplot)
+      new ScatterplotLayer({
+        id: 'search-radius-layer',
+        data: staticGhosts,
+        getPosition: d => [d.longitude, d.latitude],
+        // חישוב הרדיוס: (זמן עכשיו - זמן קפיאה) * מהירות (המרה למטר/שנייה)
+        getRadius: d => {
+          const timeElapsedSeconds = (ghostClock - d.frozenAt) / 1000;
+          const velocityMPS = (d.velocity || 0) / 3.6; 
+          return timeElapsedSeconds * velocityMPS;
+        },
+        getFillColor: [0, 255, 136, 40],
+        getLineColor: [0, 255, 136, 180],
+        stroked: true,
+        lineWidthMinPixels: 2,
+        updateTriggers: { getRadius: [ghostClock] }
+      }),
 
-  // 2. הגדרת המערך בחוץ כדי שיהיה נגיש לכל אורך הבלוק
-  const activeLayers: any[] = [
-    new IconLayer({
-      id: 'airplane-layer',
-      data: flights,
-      pickable: true,
-      iconAtlas: AIRPLANE_ICON_URL,
-      iconMapping: { airplane: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
-      getIcon: () => 'airplane',
-      getPosition: (d: IFlight) => [d.longitude, d.latitude],
-      getSize: 30,
-      getColor: (d: IFlight) => d.isGhost ? [160, 160, 160, 200] : hexToRgb(d.color || '#FF4136'),
-      getAngle: (d: IFlight) => -(d.trueTrack || 0),
-      onClick: (info) => setSelectedFlight(info.object as IFlight),
-      transitions: { getPosition: 2000, getAngle: 500 },
-      updateTriggers: { getColor: [flights], getAngle: [flights] }
-    })
-  ];
+      // 2. שכבת הקו המחבר (LineLayer)
+      new LineLayer({
+        id: 'connection-line-layer',
+        data: staticGhosts,
+        getSourcePosition: d => [d.longitude, d.latitude], // המרכז הקפוא
+        getTargetPosition: d => {
+          // מחפש את המיקום העדכני של המטוס המקורי מתוך מערך הטיסות
+          const liveFlight = flights.find(f => f.flightId === d.originalId);
+          return liveFlight ? [liveFlight.longitude, liveFlight.latitude] : [d.longitude, d.latitude];
+        },
+        getColor: [150, 150, 150, 150],
+        getWidth: 2,
+        updateTriggers: { getTargetPosition: [flights] }
+      }),
 
-  // 3. הזרקת מטוסי הרפאים הסטטיים למערך הקיים
-  if (staticGhosts && staticGhosts.length > 0) {
-    activeLayers.push(
+      // 3. המטוס הקפוא (אייקון צהוב סטטי)
       new IconLayer({
         id: 'static-ghost-layer',
         data: staticGhosts,
@@ -139,22 +155,37 @@ const layers = useMemo(() => {
         iconAtlas: AIRPLANE_ICON_URL,
         iconMapping: { airplane: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
         getIcon: () => 'airplane',
+        getPosition: (d: any) => [d.longitude, d.latitude],
+        getSize: 30,
+        getColor: [255, 255, 0, 255],
+        getAngle: (d: any) => -(d.trueTrack || 0),
+      }),
+
+      // 4. המטוסים האמיתיים (כולל טראק רפאים אפור)
+      new IconLayer({
+        id: 'airplane-layer',
+        data: flights,
+        pickable: true,
+        iconAtlas: AIRPLANE_ICON_URL,
+        iconMapping: { airplane: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
+        getIcon: () => 'airplane',
         getPosition: (d: IFlight) => [d.longitude, d.latitude],
         getSize: 30,
-        getColor: [160, 160, 160, 150], 
+        getColor: (d: IFlight) => {
+          // אם המטוס נמצא במצב חיפוש, צבע אותו באפור
+          const isBeingTracked = staticGhosts.some(g => g.originalId === d.flightId);
+          return isBeingTracked ? [130, 130, 130, 200] : hexToRgb(d.color || '#FF4136');
+        },
         getAngle: (d: IFlight) => -(d.trueTrack || 0),
+        onClick: (info) => setSelectedFlight(info.object as IFlight),
+        transitions: { getPosition: 2000, getAngle: 500 },
+        updateTriggers: { getColor: [staticGhosts, flights] }
       })
-    );
-  }
-
-  // 4. החזרת המערך המלא (שכבה אחת או שתיים)
-  return activeLayers;
-
-}, [isOffline, birds, flights, staticGhosts]);
+    ];
+  }, [isOffline, birds, flights, staticGhosts, ghostClock]);
 
   return (
     <div 
-      ref={containerRef}
       style={styles.container}
       onClick={() => setContextMenu(prev => ({ ...prev, visible: false }))}
       onContextMenu={handleContextMenu}
@@ -169,76 +200,57 @@ const layers = useMemo(() => {
           layers={layers}
           getCursor={({ isHovering }) => isHovering ? 'pointer' : 'grab'}
         >
-          <Map 
-            mapStyle={MAP_STYLE_URL} 
-            reuseMaps={true}
-          />
+          <Map mapStyle={MAP_STYLE_URL} reuseMaps={true} />
         </DeckGL>
       )}
 
       {!isMapReady && <LoadingSpinner message="אתחול מערכת רדאר..." />}
 
-      {/* --- Context Menu מעוצב ואחיד --- */}
+      {/* תפריט קליק ימני */}
       {contextMenu.visible && contextMenu.aircraft && (
         <div 
           className="radar-menu"
-          style={{
-            ...styles.contextMenu,
-            top: contextMenu.y - 10,
-            left: contextMenu.x + 10,
-          }}
+          style={{ ...styles.contextMenu, top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()} 
         >
-          <div style={styles.menuHeader}>
-            מטוס: {contextMenu.aircraft.flightId}
-          </div>
+          <div style={styles.menuHeader}>מזהה: {contextMenu.aircraft.flightId}</div>
           
-          {/* אפשרות 1 - חיפוש רגיל */}
           <div 
             style={{
               ...styles.menuItem,
-              color: contextMenu.aircraft.isGhost ? '#00ff88' : '#fff'
+              color: staticGhosts.some(g => g.originalId === contextMenu.aircraft?.flightId) ? '#00ff88' : '#fff'
             }}
             className="menu-item-hover"
-            onClick={async (e) => {
-              e.stopPropagation();
-              if (contextMenu.aircraft) {
-                const ghostSnapshot: IFlight = {
-                 ...contextMenu.aircraft, 
-                 flightId: `${contextMenu.aircraft.flightId}-ghost-${Date.now()}`,
-                 isGhost: false 
+            onClick={() => {
+              const aircraftId = contextMenu.aircraft!.flightId;
+              const isAlreadyTracked = staticGhosts.some(g => g.originalId === aircraftId);
+
+              if (isAlreadyTracked) {
+                // ביטול מצב חיפוש
+                setStaticGhosts(prev => prev.filter(g => g.originalId !== aircraftId));
+              } else {
+                // הפעלת מצב חיפוש - שומר את המהירות והמיקום הנוכחיים
+                const searchArea = {
+                  ...contextMenu.aircraft!,
+                  originalId: aircraftId,
+                  frozenAt: Date.now(),
                 };
-                setStaticGhosts(prev => [...prev, ghostSnapshot]);
-                setContextMenu(prev => ({ ...prev, visible: false }));
+                setStaticGhosts(prev => [...prev, searchArea]);
               }
+              setContextMenu(prev => ({ ...prev, visible: false }));
             }}
           >
-            <span style={{ marginLeft: '10px', fontSize: '16px' }}>
-              {contextMenu.aircraft.isGhost ? '●' : '○'}
+            <span style={{ marginLeft: '10px' }}>
+              {staticGhosts.some(g => g.originalId === contextMenu.aircraft?.flightId) ? '●' : '○'}
             </span>
-            <span>{contextMenu.aircraft.isGhost ? 'בטל מצב רפאים' : 'הפעל מצב רפאים'}</span>
-            {contextMenu.aircraft.isGhost && <span style={{ marginRight: 'auto', color: '#00ff88' }}>✓</span>}
+            <span>{staticGhosts.some(g => g.originalId === contextMenu.aircraft?.flightId) ? 'סגור אזור חיפוש רגיל' : 'פתח אזור חיפוש רגיל'}</span>
+            {staticGhosts.some(g => g.originalId === contextMenu.aircraft?.flightId) && (
+              <span style={{ marginRight: 'auto', color: '#00ff88' }}>✓</span>
+            )}
           </div>
 
-          {/* אפשרות 2 - חיפוש חכם */}
-          <div 
-            style={{
-              ...styles.menuItem,
-              color: '#fff'
-            }}
-            className="menu-item-hover"
-            onClick={async (e) => {
-              e.stopPropagation();
-              try {
-                console.log("Smart Search clicked");
-              } catch (error) {
-                console.error('Failed to open smart search:', error);
-              } finally {
-                setContextMenu(prev => ({ ...prev, visible: false }));
-              }
-            }}
-          >
-            <span style={{ marginLeft: '10px', fontSize: '16px' }}>○</span>
+          <div style={styles.menuItem} className="menu-item-hover">
+            <span style={{ marginLeft: '10px' }}>○</span>
             <span>פתח אזור חיפוש חכם</span>
           </div>
         </div>
@@ -248,64 +260,28 @@ const layers = useMemo(() => {
         <ColorPicker
           flightId={selectedFlight.flightId}
           onColorSelect={async (color) => {
-             await updateFlightColor(selectedFlight.flightId, color);
-             setSelectedFlight(null);
+            await updateFlightColor(selectedFlight.flightId, color);
+            setSelectedFlight(null);
           }}
           onCancel={() => setSelectedFlight(null)}
         />
       )}
 
       <style>{`
-        .radar-menu { animation: menuAppear 0.15s ease-out; backdrop-filter: blur(12px); }
+        .radar-menu { animation: menuAppear 0.1s ease-out; backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
         .menu-item-hover:hover { background-color: rgba(255, 255, 255, 0.1); }
-        @keyframes menuAppear { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        @keyframes menuAppear { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: {
-    position: 'fixed',
-    top: 0, left: 0, right: 0, bottom: 0,
-    width: '100vw', height: '100vh',
-    backgroundColor: '#0a0a0a',
-    overflow: 'hidden'
-  },
-  contextMenu: {
-    position: 'fixed',
-    minWidth: '200px',
-    backgroundColor: 'rgba(30, 30, 30, 0.85)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '8px',
-    boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-    zIndex: 10000,
-    direction: 'rtl',
-    padding: '6px'
-  },
-  menuHeader: {
-    padding: '8px 12px',
-    fontSize: '10px',
-    color: '#777',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-    marginBottom: '4px',
-    fontWeight: 'bold',
-    letterSpacing: '1px'
-  },
-  menuItem: {
-    padding: '10px 12px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    display: 'flex',
-    alignItems: 'center',
-    borderRadius: '4px',
-    transition: 'background 0.2s',
-  },
-  disabledItem: {
-    color: '#555',
-    cursor: 'pointer',
-  }
+  container: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#050505' },
+  contextMenu: { position: 'fixed', minWidth: '220px', backgroundColor: 'rgba(25, 25, 25, 0.95)', borderRadius: '8px', zIndex: 10000, direction: 'rtl', padding: '6px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' },
+  menuHeader: { padding: '10px 12px', fontSize: '10px', color: '#666', borderBottom: '1px solid rgba(255, 255, 255, 0.05)', marginBottom: '4px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' },
+  menuItem: { padding: '12px 12px', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', borderRadius: '4px', color: '#fff', transition: 'all 0.2s ease' }
 };
 
-export default App; 
-
+export default App;
+//tbh rumv jsbcdj 

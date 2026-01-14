@@ -279,8 +279,9 @@ function App() {
 const styles: Record<string, React.CSSProperties> = {
   container: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#050505' },
   contextMenu: { position: 'fixed', minWidth: '220px', backgroundColor: 'rgba(25, 25, 25, 0.95)', borderRadius: '8px', zIndex: 10000, direction: 'rtl', padding: '6px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' },
-  menuHeader: { padding: '10px 12px', fontSize: '10px', color: '#666', borderBottom: '1px solid rgba(255, 255, 255, 0.05)', marginBottom: '4px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' },
+  menuHeader: { padding: '10px 12px', fontSize: '11px', color: '#666', borderBottom: '1px solid rgba(255, 255, 255, 0.05)', marginBottom: '4px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' },
   menuItem: { padding: '12px 12px', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', borderRadius: '4px', color: '#fff', transition: 'all 0.2s ease' }
 };
 
 export default App;
+// --- IGNORE ---

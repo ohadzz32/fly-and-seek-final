@@ -6,10 +6,12 @@ export interface IFlight {
   trueTrack: number;
   color: string;
   lastUpdated?: string;
-  isGhost? : boolean;
-  isFrozen? : boolean;
-  searchRadius?: number;
+  isGhost?: boolean;
+}
 
+export interface StaticGhost extends IFlight {
+  originalId: string;
+  frozenAt: number;
 }
 
 

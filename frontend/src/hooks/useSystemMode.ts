@@ -17,7 +17,6 @@ export function useSystemMode(): UseSystemModeReturn {
   const fetchCurrentMode = useCallback(async () => {
     try {
       const mode = await FlightAPIService.getCurrentMode();
-      console.log('🔄 useSystemMode: Fetched mode:', mode);
       setCurrentMode(mode);
     } catch (err) {
       console.error('Failed to fetch current mode:', err);

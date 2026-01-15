@@ -10,7 +10,7 @@ import { useFlightData } from './hooks/useFlightData';
 import { useMapReady } from './hooks/useMapReady';
 import { useSystemMode } from './hooks/useSystemMode';
 import { useBirdData } from './hooks/useBirdData';
-import type { IFlight } from './types/Flight.types';
+import type { IFlight, StaticGhost } from './types/Flight.types';
 
 // Components & Utils
 import ModeSelector from './components/ModeSelector';
@@ -41,8 +41,8 @@ function App() {
 
   // --- States ---
   const [selectedFlight, setSelectedFlight] = useState<IFlight | null>(null);
-  const [staticGhosts, setStaticGhosts] = useState<any[]>([]);
-  const [ghostClock, setGhostClock] = useState(Date.now()); // "הדופק" שמניע את הרדיוס
+  const [staticGhosts, setStaticGhosts] = useState<StaticGhost[]>([]);
+  const [ghostClock, setGhostClock] = useState(Date.now());
   
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -53,26 +53,18 @@ function App() {
 
   const deckRef = useRef<any>(null);
 
-  // עדכון השעון כל 100 מילישניות עבור אנימציה חלקה של העיגול
+  // שעון פעימות לאנימציה חלקה של התרחבות העיגול
   useEffect(() => {
     const interval = setInterval(() => {
       setGhostClock(Date.now());
-    }, 100);
+    }, 30);
     return () => clearInterval(interval);
   }, []);
-
-  useEffect(() => {
-    if (isOffline) {
-      setSelectedFlight(null);
-      setContextMenu(prev => ({ ...prev, visible: false }));
-    }
-  }, [isOffline]);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     if (!deckRef.current) return;
 
-    // הגדרת זיהוי קליק ימני גם על השכבה הרגילה וגם על המטוס הקפוא
     const info = deckRef.current.pickObject({
       x: e.clientX,
       y: e.clientY,
@@ -81,7 +73,7 @@ function App() {
     });
 
     if (info && info.object) {
-      // אם לחצנו על מטוס קפוא, נשלוף את המידע המקורי שלו לצורך התפריט
+      // אם זה טראק רפאים (מטוס אפור), נמצא את המידע המקורי שלו לצורך התפריט
       const aircraftData = info.object.originalId 
         ? flights.find(f => f.flightId === info.object.originalId) || info.object
         : info.object;
@@ -114,37 +106,36 @@ function App() {
     }
 
     return [
-      // 1. שכבת העיגול המתרחב (Scatterplot)
+      // 1. שכבת העיגול המתרחב - נשארת בנקודת הקיפאון
       new ScatterplotLayer({
         id: 'search-radius-layer',
         data: staticGhosts,
-        getPosition: d => [d.longitude, d.latitude],
-        // חישוב הרדיוס: (זמן עכשיו - זמן קפיאה) * מהירות (המרה למטר/שנייה)
-        getRadius: d => {
+        getPosition: (d: StaticGhost) => [d.longitude, d.latitude],
+        getRadius: (d: StaticGhost) => {
           const timeElapsedSeconds = (ghostClock - d.frozenAt) / 1000;
           const velocityMPS = (d.velocity || 0) / 3.6; 
-          return timeElapsedSeconds * velocityMPS;
+          return timeElapsedSeconds * velocityMPS * 1.5; // +50% מרווח בטיחות
         },
         getFillColor: [0, 255, 136, 40],
         getLineColor: [0, 255, 136, 180],
         stroked: true,
         lineWidthMinPixels: 2,
-        updateTriggers: { getRadius: [ghostClock] }
+        updateTriggers: { getRadius: ghostClock }
       }),
 
-      // 2. שכבת הקו המחבר (LineLayer)
+      // 2. קו אפור בין המטוס הקפוא לטראק הרפאים (המטוס הנע)
       new LineLayer({
         id: 'connection-line-layer',
         data: staticGhosts,
-        getSourcePosition: d => [d.longitude, d.latitude], // המרכז הקפוא
-        getTargetPosition: d => {
-          // מחפש את המיקום העדכני של המטוס המקורי מתוך מערך הטיסות
+        getSourcePosition: (d: StaticGhost) => [d.longitude, d.latitude],
+        getTargetPosition: (d: StaticGhost) => {
           const liveFlight = flights.find(f => f.flightId === d.originalId);
           return liveFlight ? [liveFlight.longitude, liveFlight.latitude] : [d.longitude, d.latitude];
         },
-        getColor: [150, 150, 150, 150],
-        getWidth: 2,
-        updateTriggers: { getTargetPosition: [flights] }
+        getColor: [200, 200, 200, 255],
+        getWidth: 5,
+        widthMinPixels: 3,
+        updateTriggers: { getTargetPosition: flights }
       }),
 
       // 3. המטוס הקפוא (אייקון צהוב סטטי)
@@ -155,13 +146,13 @@ function App() {
         iconAtlas: AIRPLANE_ICON_URL,
         iconMapping: { airplane: { x: 0, y: 0, width: 512, height: 512, mask: true, anchorY: 256, anchorX: 256 } },
         getIcon: () => 'airplane',
-        getPosition: (d: any) => [d.longitude, d.latitude],
+        getPosition: (d: StaticGhost) => [d.longitude, d.latitude],
         getSize: 30,
         getColor: [255, 255, 0, 255],
-        getAngle: (d: any) => -(d.trueTrack || 0),
+        getAngle: (d: StaticGhost) => -(d.trueTrack || 0),
       }),
 
-      // 4. המטוסים האמיתיים (כולל טראק רפאים אפור)
+      // 4. המטוסים האמיתיים (כולל הפיכה ל"טראק רפאים" אפור)
       new IconLayer({
         id: 'airplane-layer',
         data: flights,
@@ -172,14 +163,16 @@ function App() {
         getPosition: (d: IFlight) => [d.longitude, d.latitude],
         getSize: 30,
         getColor: (d: IFlight) => {
-          // אם המטוס נמצא במצב חיפוש, צבע אותו באפור
           const isBeingTracked = staticGhosts.some(g => g.originalId === d.flightId);
-          return isBeingTracked ? [130, 130, 130, 200] : hexToRgb(d.color || '#FF4136');
+          return isBeingTracked ? [150, 150, 150, 255] : hexToRgb(d.color || '#FF4136');
         },
         getAngle: (d: IFlight) => -(d.trueTrack || 0),
         onClick: (info) => setSelectedFlight(info.object as IFlight),
-        transitions: { getPosition: 2000, getAngle: 500 },
-        updateTriggers: { getColor: [staticGhosts, flights] }
+        transitions: { 
+          getPosition: 2000,
+          getAngle: 500 
+        },
+        updateTriggers: { getColor: staticGhosts }
       })
     ];
   }, [isOffline, birds, flights, staticGhosts, ghostClock]);
@@ -226,10 +219,10 @@ function App() {
               const isAlreadyTracked = staticGhosts.some(g => g.originalId === aircraftId);
 
               if (isAlreadyTracked) {
-                // ביטול מצב חיפוש
+                // סגירת אזור החיפוש
                 setStaticGhosts(prev => prev.filter(g => g.originalId !== aircraftId));
               } else {
-                // הפעלת מצב חיפוש - שומר את המהירות והמיקום הנוכחיים
+                // פתיחת אזור חיפוש רגיל - מקפיא את המידע הנוכחי
                 const searchArea = {
                   ...contextMenu.aircraft!,
                   originalId: aircraftId,
@@ -241,12 +234,9 @@ function App() {
             }}
           >
             <span style={{ marginLeft: '10px' }}>
-              {staticGhosts.some(g => g.originalId === contextMenu.aircraft?.flightId) ? '●' : '○'}
+              {staticGhosts.some(g => g.originalId === contextMenu.aircraft?.flightId) ? '✓' : '○'}
             </span>
-            <span>{staticGhosts.some(g => g.originalId === contextMenu.aircraft?.flightId) ? 'סגור אזור חיפוש רגיל' : 'פתח אזור חיפוש רגיל'}</span>
-            {staticGhosts.some(g => g.originalId === contextMenu.aircraft?.flightId) && (
-              <span style={{ marginRight: 'auto', color: '#00ff88' }}>✓</span>
-            )}
+            <span>פתח אזור חיפוש רגיל</span>
           </div>
 
           <div style={styles.menuItem} className="menu-item-hover">
@@ -279,7 +269,7 @@ function App() {
 const styles: Record<string, React.CSSProperties> = {
   container: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#050505' },
   contextMenu: { position: 'fixed', minWidth: '220px', backgroundColor: 'rgba(25, 25, 25, 0.95)', borderRadius: '8px', zIndex: 10000, direction: 'rtl', padding: '6px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' },
-  menuHeader: { padding: '10px 12px', fontSize: '11px', color: '#666', borderBottom: '1px solid rgba(255, 255, 255, 0.05)', marginBottom: '4px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' },
+  menuHeader: { padding: '10px 12px', fontSize: '11px', color: '#666', borderBottom: '1px solid rgba(255, 255, 255, 0.05)', marginBottom: '4px', fontWeight: 'bold' },
   menuItem: { padding: '12px 12px', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', borderRadius: '4px', color: '#fff', transition: 'all 0.2s ease' }
 };
 

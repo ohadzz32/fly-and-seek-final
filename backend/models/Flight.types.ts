@@ -6,7 +6,7 @@ export interface IFlight { //DB
   trueTrack: number;
   color: string;
   isGhost?: boolean;
-  speed ?: number; //an know i need to cheak about if my data set have speed or not 
+  lastUpdated?: Date;
 }
 
 

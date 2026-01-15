@@ -1,8 +1,15 @@
 node_modules
 .env
 *.log
-# אם יש קבצי דאטה של השרת
-/data
 
-backend/datasetforflight/
-*.json
+# Dataset files - do not commit large historical data files
+backend/datasetforflight/*.json
+datasetforflight/*.json
+!backend/datasetforflight/SAMPLE_FORMAT.json
+!datasetforflight/SAMPLE_FORMAT.json
+!package.json
+!package-lock.json
+!tsconfig.json
+
+# Data directory
+/data

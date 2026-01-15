@@ -1,4 +1,37 @@
-# React + TypeScript + Vite
+# Fly and Seek - Flight Tracking Frontend
+
+Real-time flight tracking visualization using React, TypeScript, Vite, and Deck.gl.
+
+## 🎯 Features
+
+- **Real-time flight tracking** via Socket.io
+- **Historical data simulation** from OpenSky Network (June 2017)
+- **Interactive 3D map** using Deck.gl
+- **Live updates** of up to 3,000 aircraft
+- **Color customization** for individual flights
+- **Ghost mode** for tracking specific aircraft
+
+## 🚀 Getting Started
+
+```bash
+npm install
+npm run dev
+```
+
+The app will connect to `http://localhost:3001` for real-time data.
+
+## 📡 Socket.io Integration
+
+The frontend automatically connects to the backend Socket.io server and receives:
+- `flights_update` - Batches of flight data every second
+- `stats` - Server statistics and metadata
+- Automatic reconnection on connection loss
+
+See [OPENSKY_SIMULATION.md](../OPENSKY_SIMULATION.md) for details on the historical data simulation.
+
+---
+
+## React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

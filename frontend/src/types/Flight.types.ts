@@ -1,5 +1,6 @@
 export interface IFlight {
   flightId: string;
+  callsign?: string;
   latitude: number;
   longitude: number;
   velocity: number;

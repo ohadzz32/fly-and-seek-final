@@ -1,3 +1,11 @@
+/**
+ * BaseFlightService.ts - Abstract Base Service
+ * 
+ * Template Method pattern implementation for flight services.
+ * Provides common lifecycle management (start/stop) while allowing
+ * concrete services to implement their specific initialization logic.
+ */
+
 import { IFlightService, RunMode } from './FlightService.types';
 import { IFlightRepository } from '../interfaces/IFlightRepository';
 import { logger } from '../utils/logger';

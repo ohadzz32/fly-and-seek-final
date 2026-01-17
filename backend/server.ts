@@ -1,14 +1,63 @@
+/**
+ * server.ts - Flight Tracking Server
+ * 
+ * Main entry point for the Fly and Seek backend application.
+ * Handles Express configuration, MongoDB connection, and service lifecycle.
+ */
+import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
+
+// Resolve .env path
+const envPath = path.resolve(__dirname, '.env');
+console.log(`[Server] config path: ${envPath}`);
+
+// 1. Check if file exists
+if (fs.existsSync(envPath)) {
+  console.log('[Server] .env file exists.');
+  const fileContent = fs.readFileSync(envPath, 'utf-8');
+  console.log(`[Server] .env content length: ${fileContent.length}`);
+  
+  // 2. Manual Parse Fallback (to ensure variables are set even if dotenv fails)
+  const lines = fileContent.split('\n');
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const splitIdx = trimmed.indexOf('=');
+      if (splitIdx > -1) {
+        const key = trimmed.slice(0, splitIdx).trim();
+        const val = trimmed.slice(splitIdx + 1).trim();
+        if (key && val && !process.env[key]) {
+             process.env[key] = val; // Manually set if missing
+             console.log(`[Server] Manually loaded env var: ${key}`);
+        }
+      }
+    }
+  });
+} else {
+  console.error('[Server] ❌ .env file NOT FOUND at ' + envPath);
+}
+
+// 3. Let dotenv try as well (for standard behavior)
+dotenv.config({ path: envPath });
+
+// Environment Variable Check
+const openSkyId = process.env.OPENSKY_CLIENT_ID;
+if (!openSkyId) {
+  console.warn('⚠️  WARNING: OPENSKY_CLIENT_ID is missing/undefined in process.env!');
+} else {
+  console.log('✅ OPENSKY_CLIENT_ID detected in environment.');
+}
+
 import express, { Application } from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { ServiceManager } from './managers/ServiceManager';
 import { configureRoutes } from './routes';
 import { errorHandler, notFoundHandler } from './middleware/errorMiddleware';
 import { logger } from './utils/logger';
 import { AppError } from './utils/errors';
 
-dotenv.config();
 
 interface ServerConfig {
   port: number;
@@ -35,6 +84,7 @@ class FlightTrackingServer {
       corsOrigins: [
         'http://localhost:5173',
         'http://localhost:5174',
+        'http://localhost:5175',
         'http://localhost:3000'
       ],
       nodeEnv: process.env.NODE_ENV || 'development'

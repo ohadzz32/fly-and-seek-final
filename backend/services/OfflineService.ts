@@ -1,4 +1,9 @@
-
+/**
+ * OfflineService.ts - Static Bird Data Display
+ * 
+ * Loads bird observation data from a local GeoJSON file.
+ * Used for offline mode when no live flight data is needed.
+ */
 
 import { RunMode } from './FlightService.types';
 import { BaseFlightService } from './BaseFlightService';
@@ -10,7 +15,7 @@ import { validateCoordinates } from '../utils/validators';
 import fs from 'fs/promises';
 import path from 'path';
 
-
+// GeoJSON type definitions
 interface GeoJSONFeature {
   type: string;
   properties?: { id?: string };

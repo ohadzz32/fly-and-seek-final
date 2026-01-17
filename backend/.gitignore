@@ -6,3 +6,11 @@ node_modules
 
 backend/datasetforflight/
 *.json
+
+//opensky
+OPENSKY_CLIENT_ID=ohad_battat12-api-client
+OPENSKY_CLIENT_SECRET=40EgjPp2Y4o4KmBydauy77ruDLY45Pzi
+
+//mongodb
+MONGO_URI=mongodb://localhost:27017/fly-and-seek
+PORT=3001

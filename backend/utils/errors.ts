@@ -1,3 +1,13 @@
+/**
+ * errors.ts - Custom Error Classes
+ * 
+ * Typed error classes for consistent error handling:
+ * - AppError: Base error with status code
+ * - ValidationError: 400 Bad Request
+ * - NotFoundError: 404 Not Found
+ * - ExternalServiceError: 503 Service Unavailable
+ */
+
 export class AppError extends Error {
   public readonly statusCode: number;
   public readonly isOperational: boolean;

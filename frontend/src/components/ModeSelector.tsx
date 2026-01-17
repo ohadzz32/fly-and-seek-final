@@ -1,24 +1,31 @@
 import React from 'react';
-import type { RunMode, ModeOption } from '../types/Config.types';
-import { useSystemMode } from '../hooks/useSystemMode';
+import { RunMode } from '../types/enums';
+
+interface ModeOption {
+  id: RunMode;
+  label: string;
+  icon: string;
+  color: string;
+  description: string;
+}
 
 const MODE_OPTIONS: ModeOption[] = [
   { 
-    id: 'OFFLINE', 
+    id: RunMode.OFFLINE, 
     label: 'Offline (Birds)', 
     icon: '🐦‍⬛', 
     color: '#4CAF50',
     description: 'Load static bird data from local GeoJSON file'
   },
   { 
-    id: 'SNAP', 
+    id: RunMode.SNAP, 
     label: 'Simulation (Snap)', 
     icon: '📸', 
     color: '#2196F3',
     description: 'Snapshot simulation with physics-based movement'
   },
   { 
-    id: 'REALTIME', 
+    id: RunMode.REALTIME, 
     label: 'Realtime (Israel)', 
     icon: '✈️', 
     color: '#fa0505ff',
@@ -26,13 +33,22 @@ const MODE_OPTIONS: ModeOption[] = [
   }
 ];
 
-const ModeSelector: React.FC = () => {
-  const { currentMode, loading, error, changeMode } = useSystemMode();
+interface ModeSelectorProps {
+  currentMode: RunMode;
+  loading: boolean;
+  error: string | null;
+  onChangeMode: (mode: RunMode) => Promise<void>;
+}
 
+export const ModeSelector: React.FC<ModeSelectorProps> = React.memo(({ 
+  currentMode, 
+  loading, 
+  error, 
+  onChangeMode 
+}) => {
   const handleModeChange = async (newMode: RunMode): Promise<void> => {
     try {
-      await changeMode(newMode);
-      alert(`Successfully switched to ${newMode} mode`);
+      await onChangeMode(newMode);
     } catch (err) {
       alert(`Failed to switch mode: ${error || 'Unknown error'}`);
     }
@@ -79,7 +95,8 @@ const ModeSelector: React.FC = () => {
       )}
     </div>
   );
-};
+});
+
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
@@ -135,5 +152,3 @@ const styles: Record<string, React.CSSProperties> = {
     fontStyle: 'italic'
   }
 };
-
-export default ModeSelector;

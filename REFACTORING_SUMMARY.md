@@ -7,6 +7,60 @@ This document outlines the comprehensive refactoring performed on the Fly and Se
 
 ---
 
+## 🔄 Latest Refactoring (Session 2)
+
+### Frontend Performance Optimizations
+1. **Fixed Infinite Re-render Loop** - Resolved WebGL context loss caused by unstable dependencies
+2. **Removed Debug Logging** - Cleaned all console.log statements from production code
+3. **Stable Memoization Keys** - Using string-based keys instead of array references
+
+### Frontend Code Cleanup
+- **App.tsx**: Simplified from ~325 lines to ~230 lines
+  - Removed complex WebGL error handling (unnecessary)
+  - Cleaner import organization
+  - Better code documentation
+  
+- **useSearchAreas.ts**: Cleaner hook with clear documentation
+  - Removed useMemo wrapper on return (unnecessary)
+  - Removed all debug logging
+  
+- **useSearchAreaLayers.ts**: Better organized constants
+  - Extracted colors and icon mappings as constants
+  - Helper function for dead reckoning calculation
+  - Clear layer order documentation
+
+- **useFlightData.ts**: Simplified polling logic
+  - Constants for polling intervals
+  - Removed verbose logging
+  - Cleaner state management
+
+### Backend Code Cleanup
+All backend files now have:
+- JSDoc documentation headers explaining purpose
+- Consistent 2-space indentation
+- Extracted constants (moved from class properties)
+- Removed unused imports
+- Cleaner code organization
+
+**Files Updated:**
+- **server.ts**: Added documentation header
+- **BaseFlightService.ts**: Template Method pattern documentation
+- **RealTimeService.ts**: Feature documentation (polling, error handling)
+- **OfflineService.ts**: Fixed formatting, added GeoJSON type docs
+- **SnapService.ts**: Complete rewrite with proper indentation and constants
+- **ServiceManager.ts**: Service lifecycle documentation
+- **FlightController.ts**: API endpoint documentation, removed unused imports
+- **ConfigController.ts**: Fixed formatting, added docs
+- **logger.ts**: Added documentation header
+- **errors.ts**: Added error class documentation
+
+### Bug Fixes
+- **Ghost Mode Circle Formula**: R = Velocity × Time × 1.1 (safety margin)
+- **Z-Fighting**: Persistent counter for unique zIndex per SearchArea
+- **Backend 503 Handling**: Graceful handling of OpenSky API rate limits
+
+---
+
 ## 🎯 Architectural Changes
 
 ### 1. **Dependency Inversion Principle (DIP)**

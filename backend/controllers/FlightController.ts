@@ -1,10 +1,16 @@
+/**
+ * FlightController.ts - Flight API Endpoints
+ * 
+ * Handles HTTP requests for flight data:
+ * - GET /flights - List all flights
+ * - PATCH /flights/:id/color - Update flight color
+ * - POST /flights/:id/ghost - Toggle ghost mode
+ */
+
 import { Request, Response } from 'express';
 import { DIContainer } from '../container/DIContainer';
 import { NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
-import { FlightRepository } from '../repositories/FlightRepository';
-import { Flight } from '../models/Flight';
-
 
 export class FlightController {
   private readonly repository = DIContainer.getInstance().getFlightRepository();
@@ -41,50 +47,44 @@ export class FlightController {
     });
   }
 
-async toggleGhostStatus(req: Request, res: Response): Promise<void> { // ghost mode on/off
-  try {
+async toggleGhostStatus(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
-    const flight = await this.repository.findById(id); // find the fight by id
+    const flight = await this.repository.findById(id);
 
     if (!flight) {
-      res.status(404).json({ message: 'Flight not found in the DB' });    // if the flight is not found 
-      return;
+      throw new NotFoundError('Flight', id);
     }
 
-    if (!flight.isGhost) {  
+    const SHADOW_COLOR = '#999696ff';
+
+    if (!flight.isGhost) {
+      // Activate ghost mode - freeze this flight and create shadow
       await this.repository.updateOne(id, { isGhost: true });
 
       const shadowId = `${flight.flightId}-shadow`;
-      const shadowData = {    
+      const shadowData = {
         flightId: shadowId,
         longitude: flight.longitude,
         latitude: flight.latitude,
         velocity: flight.velocity,
         trueTrack: flight.trueTrack,
-        color: '#999696ff',
+        color: SHADOW_COLOR,
         isGhost: false
       };
 
       await this.repository.create(shadowData);
-      
+
       logger.info(`Ghost Mode ON: Flight ${id} frozen. Shadow ${shadowId} created.`);
-      res.status(200).json({ success: true, mode: 'activated' });
+      res.json({ success: true, data: { mode: 'activated' } });
     } else {
+      // Deactivate ghost mode - unfreeze flight and delete shadow
       await this.repository.updateOne(id, { isGhost: false });
-      
+
       const shadowId = `${flight.flightId}-shadow`;
       await this.repository.deleteOne(shadowId);
 
       logger.info(`Ghost Mode OFF: Flight ${id} is now active again. Shadow deleted.`);
-      res.status(200).json({ success: true, mode: 'deactivated' });
+      res.json({ success: true, data: { mode: 'deactivated' } });
     }
-  } catch (error: any) {
-    logger.error('Error in toggleGhostStatus:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal Server Error', 
-      error: error.message 
-    });
   }
-}
 }

@@ -1,7 +1,11 @@
-
+/**
+ * logger.ts - Application Logger
+ * 
+ * Simple console logger with timestamp and level formatting.
+ * Debug logs only shown in development environment.
+ */
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
-
 
 interface ILogger {
   info(message: string, meta?: Record<string, any>): void;

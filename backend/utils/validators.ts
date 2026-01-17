@@ -1,19 +1,25 @@
-import { RunMode } from '../services/FlightService.types';
+import { RunMode, RUN_MODES, isValidRunMode } from '../services/FlightService.types';
 import { ValidationError } from './errors';
 
+/** Regex for validating hex color format (6 or 8 chars) */
+const HEX_COLOR_REGEX = /^#[0-9A-F]{6}([0-9A-F]{2})?$/i;
 
+/**
+ * Validates hex color format
+ * Accepts both 6-char (#FFFFFF) and 8-char (#FFFFFFFF) formats
+ */
 export function validateHexColor(color: string): void {
-  const hexColorRegex = /^#[0-9A-F]{6}$/i;
-  if (!hexColorRegex.test(color)) {
-    throw new ValidationError(`Invalid hex color format: ${color}`);
+  if (!HEX_COLOR_REGEX.test(color)) {
+    throw new ValidationError(`Invalid hex color format: ${color}. Use #RRGGBB or #RRGGBBAA`);
   }
 }
 
-
+/**
+ * Validates that the mode is a valid RunMode
+ */
 export function validateRunMode(mode: string): asserts mode is RunMode {
-  const validModes: RunMode[] = ['OFFLINE', 'REALTIME', 'SNAP'];
-  if (!validModes.includes(mode as RunMode)) {
-    throw new ValidationError(`Invalid mode: ${mode}. Must be one of: ${validModes.join(', ')}`);
+  if (!isValidRunMode(mode)) {
+    throw new ValidationError(`Invalid mode: ${mode}. Must be one of: ${RUN_MODES.join(', ')}`);
   }
 }
 

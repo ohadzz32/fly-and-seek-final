@@ -1,5 +1,31 @@
 # 🏗️ Architecture Overview
 
+## 🎯 SOLID Principles Implementation
+
+הפרויקט מיישם את עקרונות SOLID באופן מלא:
+
+### 1. **Single Responsibility Principle (SRP)**
+- כל קומפוננטה/hook אחראי רק על משימה אחת
+- הפרדה ברורה בין UI, לוגיקה, ו-state management
+
+### 2. **Open/Closed Principle (OCP)**
+- הקוד פתוח להרחבה (הוספת סוגי אזור חיפוש) אך סגור לשינוי
+- שימוש ב-composition על פני inheritance
+
+### 3. **Liskov Substitution Principle (LSP)**
+- ממשקים מוגדרים בבירור (IFlight, SearchArea)
+- כל היירושה שומרת על הקונטרקט של הבסיס
+
+### 4. **Interface Segregation Principle (ISP)**
+- ממשקים קטנים וממוקדים
+- כל client מקבל רק את מה שהוא צריך
+
+### 5. **Dependency Inversion Principle (DIP)**
+- תלות ב-abstractions (interfaces) ולא ב-implementations
+- Dependency Injection דרך props ו-hooks
+
+---
+
 ## Backend Architecture (Clean Architecture + SOLID)
 
 ```
@@ -49,6 +75,7 @@
 │  │     - Flight Schema             │                            │
 │  └─────────────────────────────────┘                            │
 └─────────────────────────────────────────────────────────────────┘
+```
 ```
 
 ## Frontend Architecture (Hook-Based Clean Architecture)

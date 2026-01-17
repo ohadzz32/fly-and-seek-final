@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 interface BirdFeature {
   type: string;
@@ -9,33 +9,56 @@ interface BirdFeature {
   properties: {
     name?: string;
     species?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
-interface BirdData {
+export interface BirdData {
   longitude: number;
   latitude: number;
   name?: string;
   species?: string;
 }
 
-export function useBirdData(enabled: boolean = true) {
+interface UseBirdDataReturn {
+  birds: BirdData[];
+  loading: boolean;
+  error: string | null;
+}
+
+/**
+ * Hook for managing bird data
+ * - Only loads data when enabled (OFFLINE mode)
+ * - CRITICAL: Clears data immediately when disabled
+ */
+export function useBirdData(enabled: boolean): UseBirdDataReturn {
   const [birds, setBirds] = useState<BirdData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  const clearBirds = useCallback(() => {
+    console.log('[useBirdData] 🧹 CLEARING all bird data');
+    setBirds([]);
+    setError(null);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
+    // CRITICAL: Clear birds immediately when NOT enabled
     if (!enabled) {
-      setBirds([]);
-      setLoading(false);
+      console.log('[useBirdData] ⏸️ Disabled - clearing birds immediately');
+      clearBirds();
       return;
     }
 
     const loadBirdData = async () => {
       try {
+        console.log('[useBirdData] 🦅 Loading bird data...');
         setLoading(true);
-        // Load the bird GeoJSON data from the public folder
+        
         const response = await fetch('/bird_data.geojson');
         
         if (!response.ok) {
@@ -44,20 +67,10 @@ export function useBirdData(enabled: boolean = true) {
 
         const geojson = await response.json();
         
-        // Check if we have a valid FeatureCollection
-        if (!geojson || typeof geojson !== 'object') {
-          throw new Error('Invalid GeoJSON: Not an object');
-        }
-
-        if (geojson.type !== 'FeatureCollection') {
-          throw new Error(`Invalid GeoJSON type: ${geojson.type}`);
-        }
-
-        if (!Array.isArray(geojson.features)) {
-          throw new Error('Invalid GeoJSON: features is not an array');
+        if (!geojson || geojson.type !== 'FeatureCollection' || !Array.isArray(geojson.features)) {
+          throw new Error('Invalid GeoJSON structure');
         }
         
-        // Transform GeoJSON features to simple bird objects
         const birdData: BirdData[] = geojson.features.map((feature: BirdFeature) => ({
           longitude: feature.geometry.coordinates[0],
           latitude: feature.geometry.coordinates[1],
@@ -65,21 +78,31 @@ export function useBirdData(enabled: boolean = true) {
           species: feature.properties?.birdType || feature.properties?.species
         }));
 
-        console.log('🐦 useBirdData: Loaded birds:', birdData.length);
-        console.log('🐦 First 3 birds:', birdData.slice(0, 3));
-        setBirds(birdData);
-        setError(null);
+        if (isMountedRef.current) {
+          console.log(`[useBirdData] ✅ Loaded ${birdData.length} birds`);
+          setBirds(birdData);
+          setError(null);
+        }
       } catch (err) {
-        console.error('Error loading bird data:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load bird data');
-        setBirds([]);
+        if (isMountedRef.current) {
+          console.error('[useBirdData] ❌ Error:', err);
+          setError(err instanceof Error ? err.message : 'Failed to load bird data');
+          setBirds([]);
+        }
       } finally {
-        setLoading(false);
+        if (isMountedRef.current) {
+          setLoading(false);
+        }
       }
     };
 
     loadBirdData();
-  }, [enabled]);
+
+    return () => {
+      console.log('[useBirdData] 🧹 Cleanup');
+      isMountedRef.current = false;
+    };
+  }, [enabled, clearBirds]);
 
   return { birds, loading, error };
 }

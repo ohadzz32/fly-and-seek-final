@@ -1,5 +1,6 @@
-export type RunMode = 'OFFLINE' | 'REALTIME' | 'SNAP';
+import { RunMode } from './enums';
 
+export { RunMode };
 
 export interface ModeOption {
   id: RunMode;

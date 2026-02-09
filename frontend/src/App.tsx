@@ -1,15 +1,3 @@
-/**
- * App.tsx - Main Application Component
- * 
- * Fly and Seek - Real-time Aircraft Tracking System
- * 
- * Features:
- * - Live aircraft tracking with OpenSky API
- * - Ghost Mode for tracking specific aircraft
- * - Bird observation mode (offline)
- * - Color customization for aircraft
- */
-
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Map } from 'react-map-gl/maplibre';
@@ -17,7 +5,6 @@ import { IconLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-// Hooks
 import { useFlightData } from './hooks/useFlightData';
 import { useMapReady } from './hooks/useMapReady';
 import { useSystemMode } from './hooks/useSystemMode';
@@ -26,19 +13,16 @@ import { useSearchAreas } from './hooks/useSearchAreas';
 import { useContextMenu } from './hooks/useContextMenu';
 import { useSearchAreaLayers } from './hooks/useSearchAreaLayers';
 
-// Components
 import { ModeSelector } from './components/ModeSelector';
 import { ColorPicker } from './components/ColorPicker';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { AircraftContextMenu } from './components/AircraftContextMenu';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-// Types & Constants
 import type { IFlight } from './types/Flight.types';
 import { RunMode } from './types/enums';
 import { INITIAL_VIEW_STATE, MAP_STYLE_URL, BIRD_ICON_URL } from './constants/mapConfig';
 
-// Initialize RTL text plugin for Hebrew support
 initializeRTLPlugin();
 
 function initializeRTLPlugin() {
@@ -50,11 +34,9 @@ function initializeRTLPlugin() {
       );
     }
   } catch {
-    // RTL plugin is optional - app works without it
   }
 }
 
-// Bird layer icon configuration
 const BIRD_ICON_MAPPING = {
   bird: {
     x: 0, y: 0,
@@ -65,7 +47,6 @@ const BIRD_ICON_MAPPING = {
 };
 
 function App() {
-  // System mode management
   const { 
     currentMode, 
     changeMode, 
@@ -75,12 +56,10 @@ function App() {
   
   const isOffline = currentMode === RunMode.OFFLINE;
 
-  // Data hooks
   const { flights, updateFlightColor } = useFlightData(currentMode);
   const { birds } = useBirdData(isOffline);
   const isMapReady = useMapReady(150);
   
-  // Search area (Ghost Mode) management
   const {
     searchAreas,
     animationClock,
@@ -89,27 +68,21 @@ function App() {
     clearAllSearchAreas
   } = useSearchAreas();
 
-  // Clear search areas when mode changes
   useEffect(() => {
     clearAllSearchAreas();
   }, [currentMode, clearAllSearchAreas]);
 
-  // UI state
   const { contextMenu, openMenu, closeMenu } = useContextMenu();
   const [selectedFlight, setSelectedFlight] = useState<IFlight | null>(null);
   
-  // DeckGL reference for picking
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const deckRef = useRef<any>(null);
 
-  // Flight click handler - opens color picker
   const handleFlightClick = useCallback((flight: IFlight) => {
     if (!isOffline) {
       setSelectedFlight(flight);
     }
   }, [isOffline]);
 
-  // Context menu handler - right-click on aircraft
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     if (!deckRef.current || isOffline) return;
@@ -132,7 +105,6 @@ function App() {
     }
   }, [flights, openMenu, closeMenu, isOffline]);
 
-  // Aircraft layers (live + ghost mode)
   const aircraftLayers = useSearchAreaLayers({
     searchAreas,
     flights,
@@ -140,7 +112,6 @@ function App() {
     onFlightClick: handleFlightClick
   });
 
-  // Bird layer - stable key prevents unnecessary recreation
   const birdsKey = useMemo(
     () => birds.map(b => `${b.latitude.toFixed(4)},${b.longitude.toFixed(4)}`).join('|'),
     [birds]
@@ -163,13 +134,11 @@ function App() {
     ];
   }, [isOffline, birdsKey, birds]);
 
-  // Select layers based on mode
   const layers = useMemo(
     () => isOffline ? birdLayers : aircraftLayers,
     [isOffline, birdLayers, aircraftLayers]
   );
 
-  // Cursor style based on hover state
   const getCursor = useCallback(
     ({ isHovering }: { isHovering: boolean }) => isHovering ? 'pointer' : 'grab',
     []
@@ -182,7 +151,6 @@ function App() {
         onClick={closeMenu}
         onContextMenu={handleContextMenu}
       >
-        {/* Mode Selector */}
         <ModeSelector 
           currentMode={currentMode}
           onChangeMode={changeMode}
@@ -190,7 +158,6 @@ function App() {
           error={modeError}
         />
 
-        {/* Map */}
         {isMapReady ? (
           <DeckGL
             ref={deckRef}
@@ -205,7 +172,6 @@ function App() {
           <LoadingSpinner message="אתחול מערכת רדאר..." />
         )}
 
-        {/* Context Menu */}
         {contextMenu.visible && contextMenu.aircraft && !isOffline && (
           <AircraftContextMenu
             x={contextMenu.x}
@@ -218,7 +184,6 @@ function App() {
           />
         )}
 
-        {/* Color Picker */}
         {selectedFlight && !isOffline && (
           <ColorPicker
             flightId={selectedFlight.flightId}
@@ -236,7 +201,6 @@ function App() {
   );
 }
 
-// Styles
 const styles: Record<string, React.CSSProperties> = {
   container: {
     position: 'fixed',

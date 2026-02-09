@@ -1,12 +1,3 @@
-/**
- * useFlightData.ts - Flight Data Management Hook
- * 
- * Fetches and manages flight data based on the current mode:
- * - REALTIME: Polls every 10 seconds
- * - SNAP: Single fetch only
- * - OFFLINE: No fetching, clears existing data
- */
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FlightAPIService } from '../services/FlightAPIService';
 import type { IFlight } from '../types/Flight.types';

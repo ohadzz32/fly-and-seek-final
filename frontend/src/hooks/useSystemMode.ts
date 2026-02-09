@@ -9,11 +9,6 @@ interface UseSystemModeReturn {
   changeMode: (newMode: RunMode) => Promise<void>;
 }
 
-/**
- * Hook for managing system mode (OFFLINE, SNAP, REALTIME)
- * - No polling - mode only changes when user changes it
- * - Memoized return object to prevent re-renders
- */
 export function useSystemMode(): UseSystemModeReturn {
   const [currentMode, setCurrentMode] = useState<RunMode>(RunMode.OFFLINE);
   const [loading, setLoading] = useState<boolean>(false);

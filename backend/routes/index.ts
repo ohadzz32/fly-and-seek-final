@@ -10,7 +10,6 @@ import {
   validateFlightIdParam 
 } from '../middleware/validationMiddleware';
 
-
 export function configureRoutes(serviceManager: ServiceManager): Router {
   const router = Router();
   
@@ -22,7 +21,6 @@ export function configureRoutes(serviceManager: ServiceManager): Router {
     (req, res) => configController.getCurrentMode(req, res)
   );
 
-  
   router.post(
     '/config/mode',
     validateModeChange,
@@ -35,13 +33,11 @@ export function configureRoutes(serviceManager: ServiceManager): Router {
     asyncHandler((req, res) => flightController.toggleGhostStatus(req, res))
   );
 
-  
   router.get(
     '/flights',
     asyncHandler(async (req, res) => flightController.getAllFlights(req, res))
   );
 
-  
   router.patch(
     '/flights/:id',
     validateFlightIdParam,

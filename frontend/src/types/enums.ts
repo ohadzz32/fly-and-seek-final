@@ -1,7 +1,3 @@
-/**
- * System operation modes
- * Using const objects instead of enums for TypeScript compatibility
- */
 export const RunMode = {
   OFFLINE: 'OFFLINE',
   SNAP: 'SNAP',
@@ -10,9 +6,6 @@ export const RunMode = {
 
 export type RunMode = typeof RunMode[keyof typeof RunMode];
 
-/**
- * Search area status
- */
 export const SearchAreaStatus = {
   NONE: 'NONE',
   REGULAR: 'REGULAR',
@@ -21,9 +14,6 @@ export const SearchAreaStatus = {
 
 export type SearchAreaStatus = typeof SearchAreaStatus[keyof typeof SearchAreaStatus];
 
-/**
- * Layer IDs for deck.gl
- */
 export const LayerIds = {
   BIRD_LAYER: 'bird-layer',
   AIRCRAFT_LAYER: 'live-aircraft-layer',

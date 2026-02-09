@@ -8,9 +8,6 @@ export interface ContextMenuState {
   aircraft: IFlight | null;
 }
 
-/**
- * Hook לניהול תפריט קליק ימני
- */
 export const useContextMenu = () => {
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
@@ -19,23 +16,14 @@ export const useContextMenu = () => {
     aircraft: null
   });
 
-  /**
-   * פותח תפריט בנקודה מסוימת עבור מטוס
-   */
   const openMenu = (x: number, y: number, aircraft: IFlight) => {
     setContextMenu({ x, y, visible: true, aircraft });
   };
 
-  /**
-   * סוגר את התפריט
-   */
   const closeMenu = () => {
     setContextMenu(prev => ({ ...prev, visible: false }));
   };
 
-  /**
-   * מחליף מצב התפריט
-   */
   const toggleMenu = (x: number, y: number, aircraft: IFlight | null) => {
     if (aircraft) {
       openMenu(x, y, aircraft);

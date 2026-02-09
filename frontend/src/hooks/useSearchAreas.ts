@@ -1,10 +1,3 @@
-/**
- * useSearchAreas.ts - Search Area Management Hook
- * 
- * Manages ghost mode search areas with animation clock for expanding circles.
- * The animation clock only runs when there are active search areas to prevent unnecessary renders.
- */
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { SearchArea, IFlight } from '../types/Flight.types';
 import { SearchAreaStatus } from '../types/enums';

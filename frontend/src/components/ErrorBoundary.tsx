@@ -11,9 +11,6 @@ interface State {
   errorInfo: ErrorInfo | null;
 }
 
-/**
- * Error boundary to catch and handle WebGL and rendering errors
- */
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -25,7 +22,6 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
-    // Update state so the next render will show the fallback UI
     return {
       hasError: true,
       error,

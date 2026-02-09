@@ -1,31 +1,21 @@
-/**
- * ייצוג מטוס בזמן אמת
- */
 export interface IFlight {
   flightId: string;
   latitude: number;
   longitude: number;
-  velocity: number; // מהירות במטרים/שנייה (m/s)
-  trueTrack: number; // כיוון בדרגות (0-360)
-  color: string; // צבע המטוס בפורמט HEX
+  velocity: number;
+  trueTrack: number;
+  color: string;
   lastUpdated?: string;
-  isGhost?: boolean; // האם זה טראק רפאים
+  isGhost?: boolean;
 }
 
-/**
- * ייצוג מטוס קפוא עם אזור חיפוש
- * מייצג את המטוס בזמן הקיפאון
- */
 export interface SearchArea extends IFlight {
-  originalId: string; // מזהה המטוס המקורי
-  frozenAt: number; // זמן הקיפאון במילישניות (Date.now())
-  searchType: 'regular' | 'smart'; // סוג אזור החיפוש
-  zIndex?: number; // מיקום הרדיוס מבחינת הגובהה שלו בפונקצאית הרפאים
+  originalId: string;
+  frozenAt: number;
+  searchType: 'regular' | 'smart';
+  zIndex?: number;
 }
 
-/**
- * @deprecated השתמש ב-SearchArea במקום
- */
 export interface StaticGhost extends SearchArea {}
 
 

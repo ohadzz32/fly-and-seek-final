@@ -4,7 +4,6 @@ import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
-
 interface ErrorResponse {
   success: false;
   error: {
@@ -21,16 +20,13 @@ export function errorHandler(
   res: Response,
   next: NextFunction
 ): void {
-  // Default to 500 server error
   let statusCode = 500;
   let message = 'Internal server error';
 
-  // Check if it's our custom AppError
   if (err instanceof AppError) {
     statusCode = err.statusCode;
     message = err.message;
     
-    // Only log operational errors as warnings
     if (err.isOperational) {
       logger.warn(`Operational error: ${message}`, {
         statusCode,
@@ -38,14 +34,12 @@ export function errorHandler(
         method: req.method
       });
     } else {
-      // Non-operational errors are serious - log as error
       logger.error(`Non-operational error: ${message}`, {
         error: err,
         stack: err.stack
       });
     }
   } else {
-    // Unknown error - log full details
     logger.error('Unexpected error', {
       error: err,
       stack: err.stack,

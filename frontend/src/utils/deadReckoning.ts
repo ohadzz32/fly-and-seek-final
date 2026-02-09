@@ -1,8 +1,3 @@
-/**
- * Utility functions for Dead Reckoning navigation calculations
- * Used to predict aircraft position based on last known velocity and heading
- */
-
 const EARTH_RADIUS_METERS = 6371000;
 
 export interface Coordinates {
@@ -10,23 +5,13 @@ export interface Coordinates {
   longitude: number;
 }
 
-/**
- * Calculates a new position based on a starting point, distance, and bearing.
- * using the Haversine destination point formula.
- * 
- * @param startLat Latitude in degrees
- * @param startLon Longitude in degrees
- * @param distanceMeters Distance to travel in meters
- * @param bearingDegrees True track/heading in degrees (0-360)
- * @returns [longitude, latitude]
- */
 export const calculateDestinationPoint = (
   startLat: number,
   startLon: number,
   distanceMeters: number,
   bearingDegrees: number
 ): [number, number] => {
-  const δ = distanceMeters / EARTH_RADIUS_METERS; // angular distance in radians
+  const δ = distanceMeters / EARTH_RADIUS_METERS;
   const θ = toRadians(bearingDegrees);
   const φ1 = toRadians(startLat);
   const λ1 = toRadians(startLon);
@@ -42,21 +27,11 @@ export const calculateDestinationPoint = (
   );
 
   return [
-    toDegrees(λ2), // longitude
-    toDegrees(φ2)  // latitude
+    toDegrees(λ2),
+    toDegrees(φ2)
   ];
 };
 
-/**
- * Predicts current position of an aircraft based on last known data
- * 
- * @param lastLat Last known latitude
- * @param lastLon Last known longitude
- * @param speedMs Speed in meters per second (m/s)
- * @param heading True track in degrees
- * @param timeElapsedSeconds Time since last update in seconds
- * @returns [longitude, latitude]
- */
 export const predictCurrentPosition = (
   lastLat: number,
   lastLon: number,
@@ -64,7 +39,6 @@ export const predictCurrentPosition = (
   heading: number,
   timeElapsedSeconds: number
 ): [number, number] => {
-  // Speed is already in m/s, so no conversion needed
   const distanceMeters = speedMs * timeElapsedSeconds;
   
   return calculateDestinationPoint(lastLat, lastLon, distanceMeters, heading);

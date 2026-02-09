@@ -1,16 +1,3 @@
-/**
- * useSearchAreaLayers.ts - Deck.gl Layer Creation Hook
- * 
- * Creates map layers for:
- * - Live aircraft with hover/click interactions
- * - Ghost mode: frozen aircraft, search radius circles, connection lines
- * 
- * Performance optimizations:
- * - Uses refs to prevent callback-triggered re-renders
- * - Stable string keys for dependency arrays
- * - Layers only created when data changes
- */
-
 import { useMemo, useRef, useCallback } from 'react';
 import { IconLayer, ScatterplotLayer, LineLayer } from '@deck.gl/layers';
 import type { IFlight, SearchArea } from '../types/Flight.types';
@@ -44,15 +31,6 @@ interface UseSearchAreaLayersProps {
   onFlightClick: (flight: IFlight) => void;
 }
 
-/**
- * Creates deck.gl layers for aircraft visualization
- * 
- * Layer order (bottom to top):
- * 1. Search radius circles (ScatterplotLayer)
- * 2. Connection lines - frozen to live aircraft (LineLayer)
- * 3. Frozen aircraft icons - yellow (IconLayer)
- * 4. Live aircraft icons - colored or gray if tracked (IconLayer)
- */
 export const useSearchAreaLayers = ({
   searchAreas,
   flights,
@@ -112,9 +90,7 @@ export const useSearchAreaLayers = ({
 
     const layers = [];
 
-    // Ghost mode layers (only when tracking)
     if (hasSearchAreas) {
-      // Search radius circles - sorted by zIndex to prevent z-fighting
       layers.push(
         new ScatterplotLayer({
           id: 'search-radius-layer',
@@ -129,7 +105,6 @@ export const useSearchAreaLayers = ({
         })
       );
 
-      // Connection lines from frozen to live/predicted position
       layers.push(
         new LineLayer({
           id: 'ghost-connection-line-layer',
@@ -145,7 +120,6 @@ export const useSearchAreaLayers = ({
         })
       );
 
-      // Frozen aircraft markers (yellow)
       layers.push(
         new IconLayer({
           id: 'frozen-aircraft-layer',
@@ -162,7 +136,6 @@ export const useSearchAreaLayers = ({
       );
     }
 
-    // Live aircraft layer (always visible)
     layers.push(
       new IconLayer({
         id: 'live-aircraft-layer',
@@ -174,7 +147,6 @@ export const useSearchAreaLayers = ({
         getPosition: (d: IFlight) => [d.longitude, d.latitude],
         getSize: 30,
         getColor: (d: IFlight) => {
-          // Gray for ghost-tracked aircraft, otherwise use their color
           const isTracked = isFlightTracked(d.flightId, currentSearchAreas);
           return isTracked ? COLORS.ghostTrack : hexToRgb(d.color || '#FF4136');
         },

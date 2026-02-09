@@ -1,10 +1,3 @@
-/**
- * ServiceManager.ts - Service Lifecycle Manager
- * 
- * Manages the active flight service (OFFLINE/REALTIME/SNAP).
- * Handles switching between modes with proper cleanup.
- */
-
 import { IFlightService, RunMode } from '../services/FlightService.types';
 import { DIContainer } from '../container/DIContainer';
 import { logger } from '../utils/logger';
@@ -18,27 +11,22 @@ export class ServiceManager {
     this.container = DIContainer.getInstance();
   }
 
-  
   getCurrentMode(): RunMode | null {
     return this.currentService?.mode || null;
   }
 
-  
   getCurrentService(): IFlightService | null {
     return this.currentService;
   }
 
-  
   async switchService(newMode: RunMode): Promise<void> {
     try {
-      // Stop current service if running
       if (this.currentService) {
         logger.info(`Stopping ${this.currentService.mode} service`);
         await this.currentService.stop();
         this.currentService = null;
       }
 
-      // Create and start new service
       logger.info(`Switching to ${newMode} mode`);
       this.currentService = this.container.createFlightService(newMode);
       
@@ -52,7 +40,6 @@ export class ServiceManager {
     }
   }
 
-  
   stopCurrentService(): void {
     if (this.currentService) {
       logger.info(`Stopping ${this.currentService.mode} service`);

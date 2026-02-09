@@ -28,7 +28,6 @@ export class RealTimeService extends BaseFlightService {
       throw new Error('Missing OPENSKY_CLIENT_ID or OPENSKY_CLIENT_SECRET in .env');
     }
 
-    // יצירת הבקשה בדיוק כפי שעבד ב-CURL
     const params = new URLSearchParams();
     params.append('grant_type', 'client_credentials');
     params.append('client_id', clientId);
@@ -53,7 +52,7 @@ export class RealTimeService extends BaseFlightService {
       const res = await axios.get(API_URL, {
         headers: { Authorization: `Bearer ${token}` },
         params: {
-          lamin: 29.0, lamax: 34.0, // גבולות ישראל
+          lamin: 29.0, lamax: 34.0,
           lomin: 33.0, lomax: 36.0
         },
         timeout: 15000

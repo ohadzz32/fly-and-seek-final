@@ -4,7 +4,6 @@ import { Request, Response, NextFunction } from 'express';
 import { ValidationError } from '../utils/errors';
 import { validateHexColor, validateRunMode, validateFlightId } from '../utils/validators';
 
-
 export function validateModeChange(req: Request, res: Response, next: NextFunction): void {
   try {
     const { mode } = req.body;

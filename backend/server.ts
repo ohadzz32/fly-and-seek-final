@@ -1,24 +1,16 @@
-/**
- * server.ts - Flight Tracking Server
- * 
- * Main entry point for the Fly and Seek backend application.
- * Handles Express configuration, MongoDB connection, and service lifecycle.
- */
+
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 
-// Resolve .env path
 const envPath = path.resolve(__dirname, '.env');
 console.log(`[Server] config path: ${envPath}`);
 
-// 1. Check if file exists
 if (fs.existsSync(envPath)) {
   console.log('[Server] .env file exists.');
   const fileContent = fs.readFileSync(envPath, 'utf-8');
   console.log(`[Server] .env content length: ${fileContent.length}`);
   
-  // 2. Manual Parse Fallback (to ensure variables are set even if dotenv fails)
   const lines = fileContent.split('\n');
   lines.forEach(line => {
     const trimmed = line.trim();
@@ -28,7 +20,7 @@ if (fs.existsSync(envPath)) {
         const key = trimmed.slice(0, splitIdx).trim();
         const val = trimmed.slice(splitIdx + 1).trim();
         if (key && val && !process.env[key]) {
-             process.env[key] = val; // Manually set if missing
+             process.env[key] = val;
              console.log(`[Server] Manually loaded env var: ${key}`);
         }
       }
@@ -38,10 +30,8 @@ if (fs.existsSync(envPath)) {
   console.error('[Server] ❌ .env file NOT FOUND at ' + envPath);
 }
 
-// 3. Let dotenv try as well (for standard behavior)
 dotenv.config({ path: envPath });
 
-// Environment Variable Check
 const openSkyId = process.env.OPENSKY_CLIENT_ID;
 if (!openSkyId) {
   console.warn('⚠️  WARNING: OPENSKY_CLIENT_ID is missing/undefined in process.env!');
@@ -108,10 +98,8 @@ class FlightTrackingServer {
   private configureRoutes(): void {
     this.app.use('/api', configureRoutes(this.serviceManager));
 
-    
     this.app.use(notFoundHandler);
 
-    
     this.app.use(errorHandler);
 
     logger.info('Routes configured');
@@ -154,7 +142,6 @@ class FlightTrackingServer {
       try {
         this.serviceManager.stopCurrentService();
 
-        
         await mongoose.connection.close();
         logger.info('Database connection closed');
 

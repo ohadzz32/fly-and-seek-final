@@ -11,10 +11,6 @@ interface AircraftContextMenuProps {
   onClose: () => void;
 }
 
-/**
- * תפריט קליק ימני למטוס
- * מציג אפשרויות לפתיחת אזור חיפוש רגיל או חכם
- */
 export const AircraftContextMenu: React.FC<AircraftContextMenuProps> = ({
   x,
   y,

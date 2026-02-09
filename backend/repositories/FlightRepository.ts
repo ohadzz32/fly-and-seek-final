@@ -4,14 +4,8 @@ import { IFlight } from '../models/Flight.types';
 import { AppError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
-/**
- * MongoDB implementation of the flight repository
- * Handles all database operations for flight data
- */
+
 export class FlightRepository implements IFlightRepository {
-  /**
-   * Retrieve all flights from the database
-   */
   async findAll(): Promise<IFlight[]> {
     try {
       const flights = await Flight.find().lean().exec();
@@ -23,9 +17,6 @@ export class FlightRepository implements IFlightRepository {
     }
   }
 
-  /**
-   * Find a single flight by its ID
-   */
   async findById(flightId: string): Promise<IFlight | null> {
     try {
       const flight = await Flight.findOne({ flightId }).lean().exec();
@@ -36,9 +27,6 @@ export class FlightRepository implements IFlightRepository {
     }
   }
 
-  /**
-   * Perform bulk write operations
-   */
   async bulkWrite(operations: BulkWriteOperation[]): Promise<void> {
     try {
       const result = await Flight.bulkWrite(operations);
@@ -49,9 +37,6 @@ export class FlightRepository implements IFlightRepository {
     }
   }
 
-  /**
-   * Update a single flight by ID
-   */
   async updateOne(flightId: string, updates: Partial<IFlight>): Promise<IFlight | null> {
     try {
       const updatedFlight = await Flight.findOneAndUpdate(
@@ -71,7 +56,6 @@ export class FlightRepository implements IFlightRepository {
     }
   }
 
-  
   async deleteAll(): Promise<void> {
     try {
       const result = await Flight.deleteMany({});

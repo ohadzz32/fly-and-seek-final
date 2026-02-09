@@ -1,10 +1,3 @@
-/**
- * logger.ts - Application Logger
- * 
- * Simple console logger with timestamp and level formatting.
- * Debug logs only shown in development environment.
- */
-
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
 interface ILogger {
@@ -41,5 +34,4 @@ class ConsoleLogger implements ILogger {
   }
 }
 
-// Export singleton instance
 export const logger: ILogger = new ConsoleLogger();

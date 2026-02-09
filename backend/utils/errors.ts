@@ -1,13 +1,3 @@
-/**
- * errors.ts - Custom Error Classes
- * 
- * Typed error classes for consistent error handling:
- * - AppError: Base error with status code
- * - ValidationError: 400 Bad Request
- * - NotFoundError: 404 Not Found
- * - ExternalServiceError: 503 Service Unavailable
- */
-
 export class AppError extends Error {
   public readonly statusCode: number;
   public readonly isOperational: boolean;
@@ -30,14 +20,12 @@ export class AppError extends Error {
   }
 }
 
-
 export class ValidationError extends AppError {
   constructor(message: string, originalError?: Error) {
     super(message, 400, originalError);
     Object.setPrototypeOf(this, ValidationError.prototype);
   }
 }
-
 
 export class NotFoundError extends AppError {
   constructor(resource: string, identifier?: string) {
@@ -48,7 +36,6 @@ export class NotFoundError extends AppError {
     Object.setPrototypeOf(this, NotFoundError.prototype);
   }
 }
-
 
 export class ExternalServiceError extends AppError {
   constructor(service: string, originalError?: Error) {

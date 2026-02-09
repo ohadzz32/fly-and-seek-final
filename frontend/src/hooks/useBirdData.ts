@@ -26,11 +26,6 @@ interface UseBirdDataReturn {
   error: string | null;
 }
 
-/**
- * Hook for managing bird data
- * - Only loads data when enabled (OFFLINE mode)
- * - CRITICAL: Clears data immediately when disabled
- */
 export function useBirdData(enabled: boolean): UseBirdDataReturn {
   const [birds, setBirds] = useState<BirdData[]>([]);
   const [loading, setLoading] = useState(false);

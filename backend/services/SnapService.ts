@@ -46,7 +46,6 @@ export class SnapService extends BaseFlightService {
       });
 
       const states = res.data.states || [];
-      // לוקחים 50 מטוסים ראשונים מכל העולם לסימולציה
       this.simulatedFlights = states.slice(0, 50).map((s: any) => ({
         flightId: s[0],
         longitude: s[5],
@@ -66,7 +65,7 @@ export class SnapService extends BaseFlightService {
   private moveFlights(): void {
     this.simulatedFlights.forEach(f => {
       const rad = (f.trueTrack * Math.PI) / 180;
-      const speed = f.velocity / 100000; // תנועה מדומה איטית
+      const speed = f.velocity / 100000;
       f.latitude += Math.cos(rad) * speed;
       f.longitude += Math.sin(rad) * speed;
     });

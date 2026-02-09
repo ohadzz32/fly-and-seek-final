@@ -1,9 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { IFlight } from './Flight.types';
 
-
 export interface IFlightDocument extends IFlight, Document {}
-
 
 const flightSchema = new Schema<IFlightDocument>(
   {
@@ -60,8 +58,6 @@ const flightSchema = new Schema<IFlightDocument>(
   }
 );
 
-
 flightSchema.index({ latitude: 1, longitude: 1 });
-
 
 export const Flight = mongoose.model<IFlightDocument>('Flight', flightSchema);

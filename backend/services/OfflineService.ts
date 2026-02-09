@@ -1,10 +1,3 @@
-/**
- * OfflineService.ts - Static Bird Data Display
- * 
- * Loads bird observation data from a local GeoJSON file.
- * Used for offline mode when no live flight data is needed.
- */
-
 import { RunMode } from './FlightService.types';
 import { BaseFlightService } from './BaseFlightService';
 import { IFlightRepository } from '../interfaces/IFlightRepository';
@@ -15,7 +8,6 @@ import { validateCoordinates } from '../utils/validators';
 import fs from 'fs/promises';
 import path from 'path';
 
-// GeoJSON type definitions
 interface GeoJSONFeature {
   type: string;
   properties?: { id?: string };
@@ -40,7 +32,6 @@ export class OfflineService extends BaseFlightService {
     this.DATA_FILE_PATH = path.join(process.cwd(), 'data', 'bird_data (1).geojson');
   }
 
-  
   protected async initialize(): Promise<void> {
     try {
       const birds = await this.loadBirdDataFromFile();
@@ -51,7 +42,6 @@ export class OfflineService extends BaseFlightService {
     }
   }
 
-  
   private async loadBirdDataFromFile(): Promise<FlightDTO[]> {
     try {
       const rawData = await fs.readFile(this.DATA_FILE_PATH, 'utf-8');
@@ -70,11 +60,9 @@ export class OfflineService extends BaseFlightService {
     }
   }
 
-  
   private transformFeatureToFlight(feature: GeoJSONFeature, index: number): FlightDTO {
     const [longitude, latitude] = feature.geometry.coordinates;
     
-    // Validate coordinates before creating flight object
     validateCoordinates(latitude, longitude);
 
     return {
@@ -87,7 +75,6 @@ export class OfflineService extends BaseFlightService {
     };
   }
 
-  
   private async saveBirdsToDatabase(birds: FlightDTO[]): Promise<void> {
     const bulkOps = birds.map(bird => ({
       updateOne: {
@@ -109,7 +96,6 @@ export class OfflineService extends BaseFlightService {
     await this.repository.bulkWrite(bulkOps);
   }
 
-  
   protected async cleanup(): Promise<void> {
     try {
       await this.repository.deleteAll();

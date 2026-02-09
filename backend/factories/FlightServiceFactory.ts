@@ -6,9 +6,7 @@ import { SnapService } from '../services/SnapService';
 import { ValidationError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
-
 export class FlightServiceFactory {
-  
   static createService(mode: RunMode, repository: IFlightRepository): IFlightService {
     logger.info(`Creating service for mode: ${mode}`);
 

@@ -6,7 +6,6 @@ import { predictCurrentPosition } from '../utils/deadReckoning';
 import { hexToRgb } from '../utils/colorUtils';
 import { AIRPLANE_ICON_URL } from '../constants/mapConfig';
 
-// Layer styling constants
 const COLORS = {
   searchAreaFill: [0, 255, 136, 40] as [number, number, number, number],
   searchAreaStroke: [0, 255, 136, 180] as [number, number, number, number],
@@ -38,24 +37,20 @@ export const useSearchAreaLayers = ({
   onFlightClick
 }: UseSearchAreaLayersProps) => {
   
-  // Refs prevent callback/data changes from triggering layer recreation
   const searchAreasRef = useRef(searchAreas);
   const flightsRef = useRef(flights);
   const onClickRef = useRef(onFlightClick);
   
-  // Update refs silently (doesn't trigger useMemo)
   searchAreasRef.current = searchAreas;
   flightsRef.current = flights;
   onClickRef.current = onFlightClick;
 
-  // Stable click handler using ref
   const handleClick = useCallback((info: { object?: IFlight }) => {
     if (info.object) {
       onClickRef.current(info.object);
     }
   }, []);
 
-  // Stable dependency keys - only change when actual data changes
   const searchAreaIds = useMemo(
     () => searchAreas.map(a => a.originalId).join(','),
     [searchAreas]
@@ -66,13 +61,11 @@ export const useSearchAreaLayers = ({
     [flights]
   );
 
-  // Build layers - only recreates when dependencies change
   return useMemo(() => {
     const currentSearchAreas = searchAreasRef.current;
     const currentFlights = flightsRef.current;
     const hasSearchAreas = currentSearchAreas.length > 0;
 
-    // Helper: Calculate ghost track position using dead reckoning
     const getGhostPosition = (area: SearchArea): [number, number] => {
       const liveFlight = currentFlights.find(f => f.flightId === area.originalId);
       if (liveFlight) {

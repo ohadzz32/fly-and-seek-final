@@ -3,7 +3,7 @@ import { FlightAPIService } from '../services/FlightAPIService';
 import type { IFlight } from '../types/Flight.types';
 import { RunMode } from '../types/enums';
 
-const POLLING_INTERVAL_MS = 10000; // 10 seconds
+const POLLING_INTERVAL_MS = 10000;
 
 interface UseFlightDataReturn {
   flights: IFlight[];
@@ -25,14 +25,12 @@ export const useFlightData = (mode: RunMode): UseFlightDataReturn => {
   const isOffline = mode === RunMode.OFFLINE;
   const isSnap = mode === RunMode.SNAP;
 
-  // Clear all flight data
   const clearFlights = useCallback(() => {
     setFlights([]);
     setError(null);
     snapFetchCompletedRef.current = false;
   }, []);
 
-  // Clear polling interval
   const clearPollingInterval = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -40,11 +38,9 @@ export const useFlightData = (mode: RunMode): UseFlightDataReturn => {
     }
   }, []);
 
-  // Fetch flights from API
   const fetchFlights = useCallback(async () => {
     if (!isMountedRef.current) return;
     
-    // SNAP mode: only fetch once
     if (isSnap && snapFetchCompletedRef.current) return;
 
     try {
@@ -71,7 +67,6 @@ export const useFlightData = (mode: RunMode): UseFlightDataReturn => {
     }
   }, [isSnap]);
 
-  // Update flight color
   const updateFlightColor = useCallback(async (flightId: string, color: string) => {
     try {
       await FlightAPIService.updateFlightColor(flightId, color);
@@ -84,31 +79,25 @@ export const useFlightData = (mode: RunMode): UseFlightDataReturn => {
     }
   }, []);
 
-  // Effect: Manage data fetching based on mode
   useEffect(() => {
     isMountedRef.current = true;
     clearPollingInterval();
 
-    // OFFLINE mode: clear data, no fetching
     if (isOffline) {
       clearFlights();
       return;
     }
 
-    // Reset SNAP flag when mode changes
     if (isSnap) {
       snapFetchCompletedRef.current = false;
     }
 
-    // Initial fetch for online modes
     fetchFlights();
 
-    // REALTIME mode: set up polling
     if (mode === RunMode.REALTIME) {
       intervalRef.current = setInterval(fetchFlights, POLLING_INTERVAL_MS);
     }
 
-    // Cleanup on mode change or unmount
     return () => {
       isMountedRef.current = false;
       clearPollingInterval();

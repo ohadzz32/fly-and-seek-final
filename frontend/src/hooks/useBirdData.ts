@@ -42,7 +42,6 @@ export function useBirdData(enabled: boolean): UseBirdDataReturn {
   useEffect(() => {
     isMountedRef.current = true;
 
-    // CRITICAL: Clear birds immediately when NOT enabled
     if (!enabled) {
       console.log('[useBirdData] ⏸️ Disabled - clearing birds immediately');
       clearBirds();

@@ -55,10 +55,8 @@ export function useSystemMode(): UseSystemModeReturn {
 
   useEffect(() => {
     fetchCurrentMode();
-    // No polling needed - mode only changes when user changes it
   }, [fetchCurrentMode]);
 
-  // Memoize return object to prevent unnecessary re-renders
   return useMemo(() => ({
     currentMode,
     loading,

@@ -3,7 +3,7 @@ import type { SearchArea, IFlight } from '../types/Flight.types';
 import { SearchAreaStatus } from '../types/enums';
 import { createSearchArea } from '../utils/searchAreaUtils';
 
-const ANIMATION_INTERVAL_MS = 50; // 20 FPS - smooth enough for expanding circles
+const ANIMATION_INTERVAL_MS = 50;
 
 interface UseSearchAreasReturn {
   searchAreas: SearchArea[];
@@ -23,7 +23,6 @@ export const useSearchAreas = (): UseSearchAreasReturn => {
 
   const hasActiveSearchAreas = searchAreas.length > 0;
 
-  // Cleanup interval helper
   const clearAnimationInterval = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -31,7 +30,6 @@ export const useSearchAreas = (): UseSearchAreasReturn => {
     }
   }, []);
 
-  // Start/stop animation based on active search areas
   useEffect(() => {
     clearAnimationInterval();
 
@@ -44,13 +42,11 @@ export const useSearchAreas = (): UseSearchAreasReturn => {
     return clearAnimationInterval;
   }, [hasActiveSearchAreas, clearAnimationInterval]);
 
-  // Check if flight is being tracked
   const isFlightTracked = useCallback(
     (flightId: string): boolean => searchAreas.some(area => area.originalId === flightId),
     [searchAreas]
   );
 
-  // Open new search area
   const openSearchArea = useCallback(
     (flight: IFlight, searchType: 'regular' | 'smart' = 'regular') => {
       if (isFlightTracked(flight.flightId)) return;
@@ -61,12 +57,10 @@ export const useSearchAreas = (): UseSearchAreasReturn => {
     [isFlightTracked]
   );
 
-  // Close search area
   const closeSearchArea = useCallback((flightId: string) => {
     setSearchAreas(prev => prev.filter(area => area.originalId !== flightId));
   }, []);
 
-  // Toggle search area
   const toggleSearchArea = useCallback(
     (flight: IFlight, searchType: 'regular' | 'smart' = 'regular') => {
       if (isFlightTracked(flight.flightId)) {
@@ -78,13 +72,11 @@ export const useSearchAreas = (): UseSearchAreasReturn => {
     [isFlightTracked, closeSearchArea, openSearchArea]
   );
 
-  // Check if flight has search area
   const hasSearchArea = useCallback(
     (flightId: string): boolean => isFlightTracked(flightId),
     [isFlightTracked]
   );
 
-  // Get search area status
   const getSearchAreaStatus = useCallback(
     (flightId: string): SearchAreaStatus => {
       const area = searchAreas.find(a => a.originalId === flightId);
@@ -94,7 +86,6 @@ export const useSearchAreas = (): UseSearchAreasReturn => {
     [searchAreas]
   );
 
-  // Clear all search areas
   const clearAllSearchAreas = useCallback(() => {
     setSearchAreas([]);
   }, []);

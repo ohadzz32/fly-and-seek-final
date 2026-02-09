@@ -35,12 +35,10 @@ export const AircraftContextMenu: React.FC<AircraftContextMenuProps> = ({
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* כותרת עם מזהה המטוס */}
       <div style={styles.menuHeader}>
         מזהה: {aircraft.flightId}
       </div>
       
-      {/* אופציה: פתח אזור חיפוש רגיל */}
       <div 
         style={{
           ...styles.menuItem,
@@ -55,7 +53,6 @@ export const AircraftContextMenu: React.FC<AircraftContextMenuProps> = ({
         <span>פתח אזור חיפוש רגיל</span>
       </div>
 
-      {/* אופציה: פתח אזור חיפוש חכם (לא מומש) */}
       <div 
         style={styles.menuItem} 
         className="menu-item-hover"

@@ -12,11 +12,13 @@ import { useBirdData, type BirdData } from './hooks/useBirdData';
 import { useSearchAreas } from './hooks/useSearchAreas';
 import { useContextMenu } from './hooks/useContextMenu';
 import { useSearchAreaLayers } from './hooks/useSearchAreaLayers';
+import { usePrediction } from './hooks/usePrediction';
 
 import { ModeSelector } from './components/ModeSelector';
 import { ColorPicker } from './components/ColorPicker';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { AircraftContextMenu } from './components/AircraftContextMenu';
+import { SmartSearchPanel } from './components/SmartSearchPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 import type { IFlight } from './types/Flight.types';
@@ -72,6 +74,15 @@ function App() {
     clearAllSearchAreas();
   }, [currentMode, clearAllSearchAreas]);
 
+  const {
+    smartSearch,
+    isServerOnline,
+    startSmartSearch,
+    activatePrediction,
+    stopPrediction,
+    cancelSmartSearch,
+  } = usePrediction(flights);
+
   const { contextMenu, openMenu, closeMenu } = useContextMenu();
   const [selectedFlight, setSelectedFlight] = useState<IFlight | null>(null);
   
@@ -109,7 +120,8 @@ function App() {
     searchAreas,
     flights,
     animationClock,
-    onFlightClick: handleFlightClick
+    onFlightClick: handleFlightClick,
+    smartSearch,
   });
 
   const birdsKey = useMemo(
@@ -178,10 +190,46 @@ function App() {
             y={contextMenu.y}
             aircraft={contextMenu.aircraft}
             hasSearchArea={hasSearchArea(contextMenu.aircraft.flightId)}
+            hasSmartSearch={smartSearch !== null && smartSearch.flightId === contextMenu.aircraft.flightId}
+            smartSearchBuffering={smartSearch?.flightId === contextMenu.aircraft.flightId && smartSearch?.isBuffering === true}
+            smartSearchProgress={smartSearch?.flightId === contextMenu.aircraft.flightId ? smartSearch?.bufferProgress ?? 0 : 0}
+            smartSearchRemainingSeconds={
+              smartSearch?.flightId === contextMenu.aircraft.flightId && smartSearch?.isBuffering
+                ? Math.max(0, (30 - (smartSearch?.bufferProgress ?? 0)) * 10)
+                : 0
+            }
             onOpenRegularSearch={() => toggleSearchArea(contextMenu.aircraft!, 'regular')}
-            onOpenSmartSearch={() => console.log('Smart search not implemented')}
+            onOpenSmartSearch={() => {
+              if (contextMenu.aircraft) {
+                startSmartSearch(contextMenu.aircraft);
+              }
+            }}
             onClose={closeMenu}
           />
+        )}
+
+        {/* Smart Search Panel */}
+        {smartSearch && !isOffline && (
+          <SmartSearchPanel
+            smartSearch={smartSearch}
+            isServerOnline={isServerOnline}
+            onActivate={activatePrediction}
+            onStop={stopPrediction}
+            onCancel={cancelSmartSearch}
+          />
+        )}
+
+        {/* Drift HUD — top-right corner */}
+        {smartSearch?.isPredicting && (
+          <div style={styles.driftHud}>
+            Current Drift:{' '}
+            <strong>
+              {smartSearch.driftMeters < 1000
+                ? `${Math.round(smartSearch.driftMeters)}m`
+                : `${(smartSearch.driftMeters / 1000).toFixed(2)}km`}
+            </strong>
+            {' · '}Step #{smartSearch.totalSteps}
+          </div>
         )}
 
         {selectedFlight && !isOffline && (
@@ -209,6 +257,22 @@ const styles: Record<string, React.CSSProperties> = {
     right: 0,
     bottom: 0,
     backgroundColor: '#050505'
+  },
+  driftHud: {
+    position: 'fixed',
+    top: 16,
+    right: 16,
+    padding: '8px 16px',
+    backgroundColor: 'rgba(15, 15, 20, 0.88)',
+    color: '#ff6b6b',
+    fontSize: 14,
+    fontWeight: 500,
+    borderRadius: 8,
+    zIndex: 10002,
+    border: '1px solid rgba(255,100,100,0.25)',
+    backdropFilter: 'blur(12px)',
+    fontVariantNumeric: 'tabular-nums',
+    fontFamily: 'system-ui, sans-serif',
   }
 };
 
@@ -224,6 +288,10 @@ const animationStyles = `
   @keyframes menuAppear {
     from { opacity: 0; transform: translateY(-5px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
   }
 `;
 

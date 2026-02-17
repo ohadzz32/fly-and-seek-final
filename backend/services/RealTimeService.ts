@@ -67,7 +67,9 @@ export class RealTimeService extends BaseFlightService {
         latitude: s[6],
         velocity: s[9] || 0,
         trueTrack: s[10] || 0,
-        color: '#FF3B30'
+        color: '#FF3B30',
+        altitude: s[7] ?? s[13] ?? 10000,
+        verticalRate: s[11] ?? 0
       })).filter((f: any) => f.longitude !== null && f.latitude !== null);
 
       if (flights.length > 0) {

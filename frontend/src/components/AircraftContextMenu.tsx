@@ -1,11 +1,22 @@
 import React from 'react';
 import type { IFlight } from '../types/Flight.types';
 
+const formatCountdown = (seconds: number): string => {
+  if (seconds <= 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
 interface AircraftContextMenuProps {
   x: number;
   y: number;
   aircraft: IFlight;
   hasSearchArea: boolean;
+  hasSmartSearch: boolean;
+  smartSearchBuffering: boolean;
+  smartSearchProgress: number;
+  smartSearchRemainingSeconds: number;
   onOpenRegularSearch: () => void;
   onOpenSmartSearch: () => void;
   onClose: () => void;
@@ -16,6 +27,10 @@ export const AircraftContextMenu: React.FC<AircraftContextMenuProps> = ({
   y,
   aircraft,
   hasSearchArea,
+  hasSmartSearch,
+  smartSearchBuffering,
+  smartSearchProgress,
+  smartSearchRemainingSeconds,
   onOpenRegularSearch,
   onOpenSmartSearch,
   onClose
@@ -54,12 +69,25 @@ export const AircraftContextMenu: React.FC<AircraftContextMenuProps> = ({
       </div>
 
       <div 
-        style={styles.menuItem} 
+        style={{
+          ...styles.menuItem,
+          color: hasSmartSearch
+            ? smartSearchBuffering ? '#ffcc00' : '#ff6b6b'
+            : '#fff',
+        }} 
         className="menu-item-hover"
         onClick={() => handleMenuItemClick(onOpenSmartSearch)}
       >
-        <span style={styles.checkmark}>○</span>
-        <span>פתח אזור חיפוש חכם</span>
+        <span style={styles.checkmark}>
+          {hasSmartSearch ? '✓' : smartSearchBuffering ? '◌' : '○'}
+        </span>
+        <span>
+          {smartSearchBuffering
+            ? `טוען זיכרון (${smartSearchProgress}/30) · נותרו ${formatCountdown(smartSearchRemainingSeconds)}`
+            : hasSmartSearch
+            ? 'חיפוש חכם פעיל'
+            : 'פתח אזור חיפוש חכם'}
+        </span>
       </div>
     </div>
   );

@@ -7,6 +7,8 @@ export interface IFlight {
   color: string;
   isGhost?: boolean;
   lastUpdated?: Date;
+  altitude?: number;
+  verticalRate?: number;
 }
 
 export interface FlightDTO {
@@ -16,6 +18,8 @@ export interface FlightDTO {
   velocity: number;
   trueTrack: number;
   color?: string;
+  altitude?: number;
+  verticalRate?: number;
 }
 
 export interface GeographicBounds {

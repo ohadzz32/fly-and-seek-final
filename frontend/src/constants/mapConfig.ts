@@ -1,4 +1,4 @@
-import type { ViewState, ColorOption } from '../types/Flight.types';
+import type { ColorOption } from '../types/Flight.types';
 
 export const INITIAL_VIEW_STATE = {
   longitude: 34.8,
@@ -21,3 +21,4 @@ export const MAP_STYLE_URL = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-st
 export const AIRPLANE_ICON_URL = 'https://img.icons8.com/ios-filled/512/FFFFFF/fighter-jet.png';
 
 export const BIRD_ICON_URL = 'https://img.icons8.com/ios-filled/512/FFFFFF/bird.png';
+

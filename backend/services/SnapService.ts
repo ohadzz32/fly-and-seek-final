@@ -52,9 +52,7 @@ export class SnapService extends BaseFlightService {
         latitude: s[6],
         velocity: s[9] || 200,
         trueTrack: s[10] || 0,
-        color: '#007AFF',
-        altitude: s[7] ?? s[13] ?? 10000,
-        verticalRate: s[11] ?? 0
+        color: '#007AFF'
       })).filter((f: any) => f.longitude !== null);
 
       await this.syncDb();

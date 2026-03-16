@@ -50,16 +50,6 @@ const flightSchema = new Schema<IFlightDocument>(
       type : Boolean,
       required: true,
       default: false
-    },
-    altitude: {
-      type: Number,
-      required: false,
-      default: null
-    },
-    verticalRate: {
-      type: Number,
-      required: false,
-      default: null
     }
   },
   {

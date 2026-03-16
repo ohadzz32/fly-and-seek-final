@@ -1,8 +1,9 @@
 """
 =======================================================================
-  HIGH-PRECISION FLIGHT TRAJECTORY PREDICTION  —  RESIDUAL + ATTENTION
+  PROBABILISTIC FLIGHT TRAJECTORY PREDICTION  —  RESIDUAL + ATTENTION
   -------------------------------------------------------
-  Optimised for < 1 km Mean L2 Error on ~20 M rows of ECEF data.
+  Spatial Prior Model for Search-and-Rescue HDR Integration.
+  Outputs a Multivariate Gaussian (diagonal cov) instead of a point.
 
   Single-file implementation:
     Loading -> Preprocessing -> Model Building -> Training -> Evaluation
@@ -11,38 +12,40 @@
   Columns : time, icao24, x, y, z, velocity, acceleration,
             heading_sin, heading_cos, vertical_rate, dt
 
-  KEY CHANGES vs. v1 (LSTM-only baseline):
-    1. Residual / Delta-Learning — predict (x_t+1 - x_t) offsets
-       instead of absolute (x, y, z).
+  KEY CHANGES vs. v2 (point-prediction baseline):
+    1. Residual / Delta-Learning — predict (x_t+1 - x_t) offsets.
     2. LSTM → Bi-GRU + Attention hybrid architecture.
     3. Physics-informed features: 3-D velocity, jerk, delta_heading,
        vertical_acceleration.
     4. RobustScaler for engineered features (outlier-resistant).
-    5. CosineDecay LR schedule.
-    6. Deeper Dense head: 128 → BN → 64 → 3.
+    5. CosineDecay LR schedule + Gradient Clipping.
+    6. Deeper Dense head: 128 → BN → 64 → Dense(6).
+    7. ** Probabilistic output: 6D = (μx, μy, μz, σx, σy, σz) **
+    8. ** NLL (Negative Log-Likelihood) loss **
+    9. ** Calibration diagnostics: 2σ coverage + uncertainty radius **
 
-  Input   : 30 timesteps × 17 features  (look_back=30)
-  Output  : Predicted ECEF delta (dx, dy, dz) for the next timestep
+  Input   : 30 timesteps × 15 features  (look_back=30)
+  Output  : 6D — (μx,μy,μz) mean deltas + (σx,σy,σz) uncertainties
 
-  Features (17):
+  Features (15):
     x, y, z, velocity, acceleration, heading_sin, heading_cos,
     vertical_rate, dt,                           (9 base)
     vx, vy, vz,                                  (3-D velocity)
     jerk,                                        (d(acceleration)/dt)
     delta_heading,                               (angular rate)
     vertical_acceleration,                       (d(vr)/dt)
-    ax, ay, az  → replaced by jerk + vx/vy/vz — total 17 columns
-    (see NUM_FEATURES below after final column assembly)
 
   Architecture:
     LSTM(256, return_seq)  →  Dropout(0.2)
-    Bidirectional GRU(128) →  Dropout(0.2)   ← replaces LSTM-128
+    Bidirectional GRU(128) →  Dropout(0.2)
     Attention (Bahdanau)   →  context vector
-    LSTM(64, last step)    →  Dropout(0.2)
-    Dense(128, relu)  →  BatchNorm  →  Dense(64, relu)  →  Dense(3)
+    Dense(128, relu)  →  BatchNorm  →  Dense(64, relu)
+    ├── Dense(3, linear)   → μ  (mean deltas)
+    └── Dense(3, softplus) → σ  (positive uncertainties)
+    Output = concat(μ, σ)  →  6D
 
-  Loss    : Mean Squared Error on *deltas*
-  Optim   : Adam + CosineDecay schedule
+  Loss    : Gaussian NLL on *deltas*
+  Optim   : Adam + CosineDecay + clipnorm=1.0
   Scaling : RobustScaler (engineered), StandardScaler (base & xyz)
 =======================================================================
 """
@@ -189,12 +192,49 @@ class BahdanauAttention(layers.Layer):
 
 
 # =====================================================================
-#  3.  CUSTOM CALLBACK — report metres-error using residual decode
+#  3.  GAUSSIAN NLL LOSS  (Diagonal Covariance)
 # =====================================================================
-class MetersErrorCallback(callbacks.Callback):
+def gaussian_nll_loss(y_true, y_pred):
     """
-    Reconstructs absolute ECEF from delta prediction + last-known xyz,
-    inverse-transforms to metres, and reports L2 / per-axis MAE.
+    Negative Log-Likelihood for a diagonal multivariate Gaussian.
+
+    y_true : (batch, 3)   — ground-truth delta (dx, dy, dz)
+    y_pred : (batch, 6)   — predicted (μx, μy, μz, σx, σy, σz)
+
+    NLL = 0.5 * Σ_i [ log(σ_i²) + (y_i - μ_i)² / σ_i² ] + const
+    """
+    EPS   = 1e-6                            # numerical stability
+    mu    = y_pred[:, :NUM_TARGETS]          # (batch, 3)
+    sigma = y_pred[:, NUM_TARGETS:] + EPS    # (batch, 3), already softplus'd
+
+    var   = tf.square(sigma)                 # σ²
+    diff  = y_true - mu
+
+    # NLL per sample per dim: 0.5 * [log(var) + diff² / var]
+    nll = 0.5 * (tf.math.log(var) + tf.square(diff) / var)
+    return tf.reduce_mean(nll)               # scalar
+
+
+def mu_mae(y_true, y_pred):
+    """
+    MAE computed only on the μ (mean) portion of the 6D output.
+    y_true : (batch, 3)
+    y_pred : (batch, 6)  — first 3 are μ, last 3 are σ
+    """
+    mu = y_pred[:, :NUM_TARGETS]
+    return tf.reduce_mean(tf.abs(y_true - mu))
+
+
+# =====================================================================
+#  4.  CUSTOM CALLBACK — probabilistic diagnostics
+# =====================================================================
+class ProbabilisticMetersCallback(callbacks.Callback):
+    """
+    Reports:
+      • Mean / Median L2 error (metres)
+      • Average uncertainty radius (mean σ in metres)
+      • 2σ calibration: % of true points within predicted 2σ per axis
+        (theoretical ideal ≈ 95.4 %)
     """
 
     def __init__(self, val_gen, xyz_scaler, max_eval_batches=50):
@@ -204,21 +244,25 @@ class MetersErrorCallback(callbacks.Callback):
         self.max_eval_batches = min(max_eval_batches, len(val_gen))
 
     def on_epoch_end(self, epoch, logs=None):
-        all_l2 = []
-        gen = self.val_gen
+        all_l2      = []
+        all_sigma_m  = []
+        within_2sig  = 0
+        total_pts    = 0
+        gen          = self.val_gen
 
         for i in range(self.max_eval_batches):
             X_batch, Y_delta_true = gen[i]
-            Y_delta_pred = self.model.predict(X_batch, verbose=0)
+            raw_pred = self.model.predict(X_batch, verbose=0)
 
-            # Last known scaled XYZ from input window
+            mu_pred    = raw_pred[:, :NUM_TARGETS]       # (batch, 3)
+            sigma_pred = raw_pred[:, NUM_TARGETS:]       # (batch, 3)
+
+            # --- L2 in metres ---
             last_xyz_scaled = X_batch[:, -1, :NUM_TARGETS]
 
-            # Reconstruct absolute scaled position
             abs_true_scaled = last_xyz_scaled + Y_delta_true
-            abs_pred_scaled = last_xyz_scaled + Y_delta_pred
+            abs_pred_scaled = last_xyz_scaled + mu_pred
 
-            # Inverse-transform to ECEF metres
             abs_true_m = self.xyz_scaler.inverse_transform(abs_true_scaled)
             abs_pred_m = self.xyz_scaler.inverse_transform(abs_pred_scaled)
 
@@ -226,29 +270,54 @@ class MetersErrorCallback(callbacks.Callback):
             l2   = np.sqrt(np.sum(diff ** 2, axis=1))
             all_l2.extend(l2)
 
-        mean_l2 = np.mean(all_l2)
-        med_l2  = np.median(all_l2)
+            # --- σ in metres (scale back using xyz_scaler.scale_) ---
+            sigma_m = sigma_pred * self.xyz_scaler.scale_  # broadcast (3,)
+            all_sigma_m.append(sigma_m)
+
+            # --- 2σ calibration (per-axis, in scaled space) ---
+            residual_scaled = Y_delta_true - mu_pred     # (batch, 3)
+            within = np.all(
+                np.abs(residual_scaled) <= 2.0 * sigma_pred, axis=1
+            )
+            within_2sig += np.sum(within)
+            total_pts   += len(within)
+
+        mean_l2  = np.mean(all_l2)
+        med_l2   = np.median(all_l2)
+        sigma_m  = np.concatenate(all_sigma_m, axis=0)
+        avg_unc  = np.mean(np.sqrt(np.sum(sigma_m ** 2, axis=1)))
+        calib    = 100.0 * within_2sig / max(total_pts, 1)
+
         print(
-            f"  >> Metres | Mean L2={mean_l2:,.1f} m   "
-            f"Median L2={med_l2:,.1f} m"
+            f"  >> Metres | Mean L2={mean_l2:,.1f} m  "
+            f"Med={med_l2:,.1f} m  "
+            f"Unc={avg_unc:,.1f} m  "
+            f"2σ-cov={calib:.1f}%"
         )
 
 
 # =====================================================================
-#  4.  MODEL ARCHITECTURE — LSTM + Bi-GRU + Attention + Dense Head
+#  5.  MODEL ARCHITECTURE — Probabilistic LSTM + Bi-GRU + Attention
 # =====================================================================
+NUM_OUTPUTS = NUM_TARGETS * 2  # 6: (μx,μy,μz, σx,σy,σz)
+
+
 def build_model(total_steps: int):
     """
-    Functional (non-Sequential) model to accommodate the Attention layer.
+    Probabilistic model with dual-head output (μ + σ).
 
     Layer stack:
       Input(30, 15)
       LSTM(256, return_seq) → Dropout(0.2)
       Bidirectional GRU(128, return_seq) → Dropout(0.2)
       BahdanauAttention(128)             ← learns timestep importance
-      Dense(128, relu) → BatchNorm → Dense(64, relu) → Dense(3)
+      Dense(128, relu) → BatchNorm → Dense(64, relu)
+      ├── Dense(3, linear)   → μ   (mean deltas)
+      └── Dense(3, softplus) → σ   (positive uncertainties)
+      Output = concat(μ, σ) → 6D
 
-    Optimizer: Adam + CosineDecay
+    Optimizer : Adam + CosineDecay + clipnorm=1.0
+    Loss      : Gaussian NLL
     """
     inp = layers.Input(shape=(LOOK_BACK, NUM_FEATURES), name="input")
 
@@ -265,13 +334,20 @@ def build_model(total_steps: int):
     # --- Attention ---
     x = BahdanauAttention(units=128, name="attention")(x)  # (batch, 256)
 
-    # --- Dense head (increased complexity) ---
+    # --- Shared Dense trunk ---
     x = layers.Dense(128, activation="relu", name="dense_128")(x)
     x = layers.BatchNormalization(name="bn_128")(x)
     x = layers.Dense(64, activation="relu", name="dense_64")(x)
-    out = layers.Dense(NUM_TARGETS, name="output")(x)
 
-    model = keras.Model(inputs=inp, outputs=out, name="FlightResidualNet")
+    # --- Dual heads ---
+    mu    = layers.Dense(NUM_TARGETS, activation="linear", name="mu")(x)
+    sigma = layers.Dense(NUM_TARGETS, activation="softplus", name="sigma")(x)
+
+    out = layers.Concatenate(name="output")([mu, sigma])  # (batch, 6)
+
+    model = keras.Model(
+        inputs=inp, outputs=out, name="FlightProbabilisticNet"
+    )
 
     # --- CosineDecay schedule ---
     lr_schedule = keras.optimizers.schedules.CosineDecay(
@@ -279,21 +355,30 @@ def build_model(total_steps: int):
         decay_steps=total_steps,
         alpha=1e-6,                       # minimum LR at end of training
     )
-    optimizer = keras.optimizers.Adam(learning_rate=lr_schedule)
 
-    model.compile(optimizer=optimizer, loss="mse", metrics=["mae"])
+    # --- Gradient clipping for NLL stability ---
+    optimizer = keras.optimizers.Adam(
+        learning_rate=lr_schedule,
+        clipnorm=1.0,
+    )
+
+    model.compile(
+        optimizer=optimizer,
+        loss=gaussian_nll_loss,
+        metrics=[mu_mae],
+    )
     return model
 
 
 # =====================================================================
-#  5.  MAIN  — Loading → Preprocessing → Training → Evaluation
+#  6.  MAIN  — Loading → Preprocessing → Training → Evaluation
 # =====================================================================
 def main():
     wall_start = time.time()
 
     print("=" * 70)
-    print("  RESIDUAL / ATTENTION FLIGHT TRAJECTORY PREDICTION")
-    print("  Target: < 1 km Mean L2 Error")
+    print("  PROBABILISTIC FLIGHT TRAJECTORY PREDICTION (NLL)")
+    print("  Spatial Prior for Search-and-Rescue HDR Integration")
     print("=" * 70)
     print(f"  look_back      = {LOOK_BACK} steps")
     print(f"  max_dt_gap     = {MAX_DT_GAP} s")
@@ -556,7 +641,7 @@ def main():
     #  STEP 5 — Build & train model
     # -----------------------------------------------------------------
     print(f"\n{'---'*23}")
-    print("  [5/6]  Building Residual + Attention model ...")
+    print("  [5/6]  Building Probabilistic Residual + Attention model ...")
     print(f"{'---'*23}")
 
     total_train_steps = len(train_gen) * EPOCHS
@@ -578,8 +663,10 @@ def main():
             save_best_only=True,
             verbose=1,
         ),
-        # Custom: report error converted back to metres (residual decode)
-        MetersErrorCallback(val_gen, xyz_scaler, max_eval_batches=50),
+        # Probabilistic diagnostics: L2, uncertainty, calibration
+        ProbabilisticMetersCallback(
+            val_gen, xyz_scaler, max_eval_batches=50
+        ),
     ]
 
     print(f"\n{'---'*23}")
@@ -603,11 +690,18 @@ def main():
 
     best_model = keras.models.load_model(
         MODEL_SAVE_PATH,
-        custom_objects={"BahdanauAttention": BahdanauAttention},
+        custom_objects={
+            "BahdanauAttention": BahdanauAttention,
+            "gaussian_nll_loss": gaussian_nll_loss,
+            "mu_mae": mu_mae,
+        },
     )
 
-    all_l2   = []
-    all_diff = []
+    all_l2       = []
+    all_diff     = []
+    all_sigma_m  = []
+    within_2sig  = 0
+    total_pts    = 0
 
     eval_gen = FlightSequenceGenerator(
         val_idx, scaled_data, BATCH_SIZE, LOOK_BACK, shuffle=False,
@@ -616,12 +710,15 @@ def main():
     print(f"  Evaluating {len(eval_gen)} batches ...")
     for i in range(len(eval_gen)):
         X_b, Y_delta_true = eval_gen[i]
-        Y_delta_pred = best_model.predict(X_b, verbose=0)
+        raw_pred = best_model.predict(X_b, verbose=0)
 
-        # Reconstruct absolute positions from deltas
+        mu_pred    = raw_pred[:, :NUM_TARGETS]       # (batch, 3)
+        sigma_pred = raw_pred[:, NUM_TARGETS:]       # (batch, 3)
+
+        # Reconstruct absolute positions from mean deltas
         last_xyz_scaled = X_b[:, -1, :NUM_TARGETS]
         abs_true_scaled = last_xyz_scaled + Y_delta_true
-        abs_pred_scaled = last_xyz_scaled + Y_delta_pred
+        abs_pred_scaled = last_xyz_scaled + mu_pred
 
         # Inverse-transform to ECEF metres
         abs_true_m = xyz_scaler.inverse_transform(abs_true_scaled)
@@ -633,11 +730,24 @@ def main():
         all_l2.extend(l2)
         all_diff.append(diff)
 
+        # --- σ in metres ---
+        sigma_m = sigma_pred * xyz_scaler.scale_
+        all_sigma_m.append(sigma_m)
+
+        # --- 2σ calibration ---
+        residual_scaled = Y_delta_true - mu_pred
+        within = np.all(
+            np.abs(residual_scaled) <= 2.0 * sigma_pred, axis=1
+        )
+        within_2sig += int(np.sum(within))
+        total_pts   += len(within)
+
         if (i + 1) % 100 == 0:
             print(f"    batch {i + 1}/{len(eval_gen)} ...", flush=True)
 
-    all_l2   = np.array(all_l2)
-    all_diff = np.concatenate(all_diff, axis=0)
+    all_l2      = np.array(all_l2)
+    all_diff    = np.concatenate(all_diff, axis=0)
+    all_sigma_m = np.concatenate(all_sigma_m, axis=0)
 
     mean_l2   = np.mean(all_l2)
     median_l2 = np.median(all_l2)
@@ -648,17 +758,31 @@ def main():
     mae_y = np.mean(np.abs(all_diff[:, 1]))
     mae_z = np.mean(np.abs(all_diff[:, 2]))
 
-    print(f"\n  {'Metric':<35s}  {'Value':>12s}")
-    print(f"  {'_' * 50}")
-    print(f"  {'Mean Euclidean error (L2)':<35s}  {mean_l2:>10,.2f} m")
-    print(f"  {'Median Euclidean error':<35s}  {median_l2:>10,.2f} m")
-    print(f"  {'P90 Euclidean error':<35s}  {p90_l2:>10,.2f} m")
-    print(f"  {'P95 Euclidean error':<35s}  {p95_l2:>10,.2f} m")
-    print(f"  {'_' * 50}")
-    print(f"  {'MAE  X-axis':<35s}  {mae_x:>10,.2f} m")
-    print(f"  {'MAE  Y-axis':<35s}  {mae_y:>10,.2f} m")
-    print(f"  {'MAE  Z-axis':<35s}  {mae_z:>10,.2f} m")
-    print(f"  {'_' * 50}")
+    # Uncertainty metrics
+    avg_unc_radius = np.mean(np.sqrt(np.sum(all_sigma_m ** 2, axis=1)))
+    avg_sigma_x    = np.mean(all_sigma_m[:, 0])
+    avg_sigma_y    = np.mean(all_sigma_m[:, 1])
+    avg_sigma_z    = np.mean(all_sigma_m[:, 2])
+    calib_2sig     = 100.0 * within_2sig / max(total_pts, 1)
+
+    print(f"\n  {'Metric':<38s}  {'Value':>12s}")
+    print(f"  {'_' * 53}")
+    print(f"  {'Mean Euclidean error (L2)':<38s}  {mean_l2:>10,.2f} m")
+    print(f"  {'Median Euclidean error':<38s}  {median_l2:>10,.2f} m")
+    print(f"  {'P90 Euclidean error':<38s}  {p90_l2:>10,.2f} m")
+    print(f"  {'P95 Euclidean error':<38s}  {p95_l2:>10,.2f} m")
+    print(f"  {'_' * 53}")
+    print(f"  {'MAE  X-axis':<38s}  {mae_x:>10,.2f} m")
+    print(f"  {'MAE  Y-axis':<38s}  {mae_y:>10,.2f} m")
+    print(f"  {'MAE  Z-axis':<38s}  {mae_z:>10,.2f} m")
+    print(f"  {'_' * 53}")
+    print(f"  {'Avg Uncertainty Radius (3D σ)':<38s}  {avg_unc_radius:>10,.2f} m")
+    print(f"  {'Avg σ_x':<38s}  {avg_sigma_x:>10,.2f} m")
+    print(f"  {'Avg σ_y':<38s}  {avg_sigma_y:>10,.2f} m")
+    print(f"  {'Avg σ_z':<38s}  {avg_sigma_z:>10,.2f} m")
+    print(f"  {'_' * 53}")
+    print(f"  {'2σ Calibration (ideal ≈ 95.4%)':<38s}  {calib_2sig:>9.1f} %")
+    print(f"  {'_' * 53}")
 
     # -----------------------------------------------------------------
     #  Summary

@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import DeckGL from '@deck.gl/react';
 import { Map } from 'react-map-gl/maplibre';
 import { IconLayer } from '@deck.gl/layers';
+import type { PickingInfo } from '@deck.gl/core';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -12,16 +13,17 @@ import { useBirdData, type BirdData } from './hooks/useBirdData';
 import { useSearchAreas } from './hooks/useSearchAreas';
 import { useContextMenu } from './hooks/useContextMenu';
 import { useSearchAreaLayers } from './hooks/useSearchAreaLayers';
-import { usePrediction } from './hooks/usePrediction';
+import { useGlobalRiskMap } from './hooks/useGlobalRiskMap';
+import { useRiskHexLayer } from './hooks/useRiskHexLayer';
 
 import { ModeSelector } from './components/ModeSelector';
 import { ColorPicker } from './components/ColorPicker';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { AircraftContextMenu } from './components/AircraftContextMenu';
-import { SmartSearchPanel } from './components/SmartSearchPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 import type { IFlight } from './types/Flight.types';
+import type { RiskHexCell } from './types/RiskMap.types';
 import { RunMode } from './types/enums';
 import { INITIAL_VIEW_STATE, MAP_STYLE_URL, BIRD_ICON_URL } from './constants/mapConfig';
 
@@ -61,6 +63,8 @@ function App() {
   const { flights, updateFlightColor } = useFlightData(currentMode);
   const { birds } = useBirdData(isOffline);
   const isMapReady = useMapReady(150);
+  const { riskCells } = useGlobalRiskMap();
+  const riskHexLayer = useRiskHexLayer({ riskCells, visible: true });
   
   const {
     searchAreas,
@@ -73,15 +77,6 @@ function App() {
   useEffect(() => {
     clearAllSearchAreas();
   }, [currentMode, clearAllSearchAreas]);
-
-  const {
-    smartSearch,
-    isServerOnline,
-    startSmartSearch,
-    activatePrediction,
-    stopPrediction,
-    cancelSmartSearch,
-  } = usePrediction(flights);
 
   const { contextMenu, openMenu, closeMenu } = useContextMenu();
   const [selectedFlight, setSelectedFlight] = useState<IFlight | null>(null);
@@ -120,8 +115,7 @@ function App() {
     searchAreas,
     flights,
     animationClock,
-    onFlightClick: handleFlightClick,
-    smartSearch,
+    onFlightClick: handleFlightClick
   });
 
   const birdsKey = useMemo(
@@ -146,10 +140,38 @@ function App() {
     ];
   }, [isOffline, birdsKey, birds]);
 
-  const layers = useMemo(
-    () => isOffline ? birdLayers : aircraftLayers,
-    [isOffline, birdLayers, aircraftLayers]
-  );
+  const layers = useMemo(() => {
+    const dynamicLayers = isOffline ? birdLayers : aircraftLayers;
+    return riskHexLayer ? [riskHexLayer, ...dynamicLayers] : dynamicLayers;
+  }, [isOffline, birdLayers, aircraftLayers, riskHexLayer]);
+
+  const getTooltip = useCallback((info: PickingInfo) => {
+    if (info.layer?.id !== 'risk-h3-layer' || !info.object) {
+      return null;
+    }
+
+    const cell = info.object as RiskHexCell;
+    const aircraftCount = cell.details?.aircraft_count ?? 'N/A';
+    const avgAlt = cell.details?.avg_alt ?? 'N/A';
+
+    return {
+      text: [
+        `Hex: ${cell.hex}`,
+        `Risk: ${cell.risk}`,
+        `Label: ${cell.label}`,
+        `aircraft_count: ${aircraftCount}`,
+        `avg_alt: ${avgAlt}`
+      ].join('\n'),
+      style: {
+        backgroundColor: 'rgba(10, 10, 10, 0.92)',
+        color: '#ffffff',
+        border: '1px solid rgba(255,255,255,0.2)',
+        borderRadius: '6px',
+        fontSize: '12px',
+        padding: '8px'
+      }
+    };
+  }, []);
 
   const getCursor = useCallback(
     ({ isHovering }: { isHovering: boolean }) => isHovering ? 'pointer' : 'grab',
@@ -177,6 +199,7 @@ function App() {
             controller={true}
             layers={layers}
             getCursor={getCursor}
+            getTooltip={getTooltip}
           >
             <Map mapStyle={MAP_STYLE_URL} reuseMaps={true} />
           </DeckGL>
@@ -190,46 +213,10 @@ function App() {
             y={contextMenu.y}
             aircraft={contextMenu.aircraft}
             hasSearchArea={hasSearchArea(contextMenu.aircraft.flightId)}
-            hasSmartSearch={smartSearch !== null && smartSearch.flightId === contextMenu.aircraft.flightId}
-            smartSearchBuffering={smartSearch?.flightId === contextMenu.aircraft.flightId && smartSearch?.isBuffering === true}
-            smartSearchProgress={smartSearch?.flightId === contextMenu.aircraft.flightId ? smartSearch?.bufferProgress ?? 0 : 0}
-            smartSearchRemainingSeconds={
-              smartSearch?.flightId === contextMenu.aircraft.flightId && smartSearch?.isBuffering
-                ? Math.max(0, (30 - (smartSearch?.bufferProgress ?? 0)) * 10)
-                : 0
-            }
             onOpenRegularSearch={() => toggleSearchArea(contextMenu.aircraft!, 'regular')}
-            onOpenSmartSearch={() => {
-              if (contextMenu.aircraft) {
-                startSmartSearch(contextMenu.aircraft);
-              }
-            }}
+            onOpenSmartSearch={() => console.log('Smart search not implemented')}
             onClose={closeMenu}
           />
-        )}
-
-        {/* Smart Search Panel */}
-        {smartSearch && !isOffline && (
-          <SmartSearchPanel
-            smartSearch={smartSearch}
-            isServerOnline={isServerOnline}
-            onActivate={activatePrediction}
-            onStop={stopPrediction}
-            onCancel={cancelSmartSearch}
-          />
-        )}
-
-        {/* Drift HUD — top-right corner */}
-        {smartSearch?.isPredicting && (
-          <div style={styles.driftHud}>
-            Current Drift:{' '}
-            <strong>
-              {smartSearch.driftMeters < 1000
-                ? `${Math.round(smartSearch.driftMeters)}m`
-                : `${(smartSearch.driftMeters / 1000).toFixed(2)}km`}
-            </strong>
-            {' · '}Step #{smartSearch.totalSteps}
-          </div>
         )}
 
         {selectedFlight && !isOffline && (
@@ -257,22 +244,6 @@ const styles: Record<string, React.CSSProperties> = {
     right: 0,
     bottom: 0,
     backgroundColor: '#050505'
-  },
-  driftHud: {
-    position: 'fixed',
-    top: 16,
-    right: 16,
-    padding: '8px 16px',
-    backgroundColor: 'rgba(15, 15, 20, 0.88)',
-    color: '#ff6b6b',
-    fontSize: 14,
-    fontWeight: 500,
-    borderRadius: 8,
-    zIndex: 10002,
-    border: '1px solid rgba(255,100,100,0.25)',
-    backdropFilter: 'blur(12px)',
-    fontVariantNumeric: 'tabular-nums',
-    fontFamily: 'system-ui, sans-serif',
   }
 };
 
@@ -288,10 +259,6 @@ const animationStyles = `
   @keyframes menuAppear {
     from { opacity: 0; transform: translateY(-5px); }
     to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
   }
 `;
 

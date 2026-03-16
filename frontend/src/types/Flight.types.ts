@@ -7,8 +7,6 @@ export interface IFlight {
   color: string;
   lastUpdated?: string;
   isGhost?: boolean;
-  altitude?: number;
-  verticalRate?: number;
 }
 
 export interface SearchArea extends IFlight {
@@ -41,34 +39,4 @@ export interface ContextMenuState {
   mouseY: number;
   visible: boolean;
   aircraftId: string | null;
-}
-
-
-// ─── Prediction / Smart Search types ───
-
-export interface PredictionBufferStatus {
-  bufferSize: number;
-  bufferReady: boolean;
-  samplesNeeded: number;
-}
-
-export interface PredictedPosition {
-  latitude: number;
-  longitude: number;
-  altitude: number;
-  step: number;
-}
-
-export interface SmartSearchState {
-  flightId: string;
-  isBuffering: boolean;
-  bufferProgress: number;
-  isPredicting: boolean;
-  predictedPosition: PredictedPosition | null;
-  actualPosition: { latitude: number; longitude: number } | null;
-  driftMeters: number;
-  predictedPath: [number, number][];
-  actualPath: [number, number][];
-  totalSteps: number;
-  startPosition: { latitude: number; longitude: number } | null;
 }

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useCallback } from 'react';
-import { IconLayer, ScatterplotLayer, LineLayer, PathLayer } from '@deck.gl/layers';
-import type { IFlight, SearchArea, SmartSearchState } from '../types/Flight.types';
+import { IconLayer, ScatterplotLayer, LineLayer } from '@deck.gl/layers';
+import type { IFlight, SearchArea } from '../types/Flight.types';
 import { calculateSearchRadius, isFlightTracked } from '../utils/searchAreaUtils';
 import { predictCurrentPosition } from '../utils/deadReckoning';
 import { hexToRgb } from '../utils/colorUtils';
@@ -12,10 +12,6 @@ const COLORS = {
   frozenAircraft: [255, 255, 0, 255] as [number, number, number, number],
   ghostTrack: [150, 150, 150, 255] as [number, number, number, number],
   connectionLine: [200, 200, 200, 255] as [number, number, number, number],
-  predictedAircraft: [255, 60, 60, 255] as [number, number, number, number],
-  predictedPath: [255, 60, 60, 160] as [number, number, number, number],
-  actualPath: [60, 130, 255, 160] as [number, number, number, number],
-  driftLine: [255, 200, 0, 200] as [number, number, number, number],
 };
 
 const ICON_MAPPING = {
@@ -32,15 +28,13 @@ interface UseSearchAreaLayersProps {
   flights: IFlight[];
   animationClock: number;
   onFlightClick: (flight: IFlight) => void;
-  smartSearch?: SmartSearchState | null;
 }
 
 export const useSearchAreaLayers = ({
   searchAreas,
   flights,
   animationClock,
-  onFlightClick,
-  smartSearch
+  onFlightClick
 }: UseSearchAreaLayersProps) => {
   
   const searchAreasRef = useRef(searchAreas);
@@ -161,104 +155,6 @@ export const useSearchAreaLayers = ({
       })
     );
 
-    // ── Smart Search prediction layers ──
-    if (smartSearch?.isPredicting && smartSearch.predictedPosition) {
-      // Predicted path (red)
-      if (smartSearch.predictedPath.length >= 2) {
-        layers.push(
-          new PathLayer({
-            id: 'predicted-path-layer',
-            data: [{ path: smartSearch.predictedPath }],
-            getPath: (d: { path: [number, number][] }) => d.path,
-            getColor: COLORS.predictedPath,
-            getWidth: 3,
-            widthMinPixels: 2,
-            updateTriggers: {
-              getPath: smartSearch.predictedPath.length,
-            },
-          })
-        );
-      }
-
-      // Actual path (blue)
-      if (smartSearch.actualPath.length >= 2) {
-        layers.push(
-          new PathLayer({
-            id: 'actual-path-layer',
-            data: [{ path: smartSearch.actualPath }],
-            getPath: (d: { path: [number, number][] }) => d.path,
-            getColor: COLORS.actualPath,
-            getWidth: 3,
-            widthMinPixels: 2,
-            updateTriggers: {
-              getPath: smartSearch.actualPath.length,
-            },
-          })
-        );
-      }
-
-      // Drift line (yellow dashed — from actual to predicted)
-      if (smartSearch.actualPosition) {
-        layers.push(
-          new LineLayer({
-            id: 'drift-line-layer',
-            data: [
-              {
-                source: [
-                  smartSearch.actualPosition.longitude,
-                  smartSearch.actualPosition.latitude,
-                ],
-                target: [
-                  smartSearch.predictedPosition.longitude,
-                  smartSearch.predictedPosition.latitude,
-                ],
-              },
-            ],
-            getSourcePosition: (d: any) => d.source,
-            getTargetPosition: (d: any) => d.target,
-            getColor: COLORS.driftLine,
-            getWidth: 2,
-            widthMinPixels: 1,
-            updateTriggers: {
-              getSourcePosition: `${smartSearch.actualPosition.latitude},${smartSearch.actualPosition.longitude}`,
-              getTargetPosition: `${smartSearch.predictedPosition.latitude},${smartSearch.predictedPosition.longitude}`,
-            },
-          })
-        );
-      }
-
-      // Predicted aircraft marker (red)
-      layers.push(
-        new IconLayer({
-          id: 'predicted-aircraft-layer',
-          data: [
-            {
-              longitude: smartSearch.predictedPosition.longitude,
-              latitude: smartSearch.predictedPosition.latitude,
-            },
-          ],
-          pickable: false,
-          iconAtlas: AIRPLANE_ICON_URL,
-          iconMapping: ICON_MAPPING,
-          getIcon: () => 'airplane',
-          getPosition: (d: any) => [d.longitude, d.latitude],
-          getSize: 34,
-          getColor: COLORS.predictedAircraft,
-          getAngle: 0,
-          updateTriggers: {
-            getPosition: `${smartSearch.predictedPosition.latitude},${smartSearch.predictedPosition.longitude}`,
-          },
-        })
-      );
-    }
-
     return layers;
-  }, [searchAreaIds, flightsKey, animationClock, handleClick,
-      smartSearch?.isPredicting,
-      smartSearch?.predictedPosition?.latitude,
-      smartSearch?.predictedPosition?.longitude,
-      smartSearch?.predictedPath?.length,
-      smartSearch?.actualPath?.length,
-      smartSearch?.actualPosition?.latitude,
-      smartSearch?.actualPosition?.longitude]);
+  }, [searchAreaIds, flightsKey, animationClock, handleClick]);
 };

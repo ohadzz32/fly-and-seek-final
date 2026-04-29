@@ -27,6 +27,9 @@ import type { RiskHexCell } from './types/RiskMap.types';
 import { RunMode } from './types/enums';
 import { INITIAL_VIEW_STATE, MAP_STYLE_URL, BIRD_ICON_URL } from './constants/mapConfig';
 
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { EntranceScreen } from './components/EntranceScreen';
+
 initializeRTLPlugin();
 
 function initializeRTLPlugin() {
@@ -50,7 +53,7 @@ const BIRD_ICON_MAPPING = {
   }
 };
 
-function App() {
+function MainContent() {
   const { 
     currentMode, 
     changeMode, 
@@ -233,6 +236,28 @@ function App() {
         <style>{animationStyles}</style>
       </div>
     </ErrorBoundary>
+  );
+}
+
+function AuthWrapper() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <LoadingSpinner message="Authenticating Personnel..." />;
+  }
+
+  if (!user) {
+    return <EntranceScreen />;
+  }
+
+  return <MainContent />;
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AuthWrapper />
+    </AuthProvider>
   );
 }
 

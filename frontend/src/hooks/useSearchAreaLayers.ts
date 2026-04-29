@@ -65,6 +65,17 @@ export const useSearchAreaLayers = ({
     const currentSearchAreas = searchAreasRef.current;
     const currentFlights = flightsRef.current;
     const hasSearchAreas = currentSearchAreas.length > 0;
+    const sortedSearchAreas = [...currentSearchAreas].sort((a, b) => {
+      const depthA = a.zIndex || 0;
+      const depthB = b.zIndex || 0;
+
+      if (depthA !== depthB) {
+        return depthA - depthB;
+      }
+
+      // Stable tie-breaker keeps render order deterministic when depth is equal.
+      return a.originalId.localeCompare(b.originalId);
+    });
 
     const getGhostPosition = (area: SearchArea): [number, number] => {
       const liveFlight = currentFlights.find(f => f.flightId === area.originalId);
@@ -87,12 +98,17 @@ export const useSearchAreaLayers = ({
       layers.push(
         new ScatterplotLayer({
           id: 'search-radius-layer',
-          data: [...currentSearchAreas].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)),
+          data: sortedSearchAreas,
           getPosition: (d: SearchArea) => [d.longitude, d.latitude],
           getRadius: (d: SearchArea) => calculateSearchRadius(d, animationClock),
           getFillColor: COLORS.searchAreaFill,
           getLineColor: COLORS.searchAreaStroke,
           stroked: true,
+          antialiasing: false,
+          parameters: {
+            depthTest: false,
+            depthMask: false
+          },
           lineWidthMinPixels: 2,
           updateTriggers: { getRadius: animationClock }
         })

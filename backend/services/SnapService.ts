@@ -2,6 +2,7 @@ import axios from 'axios';
 import { RunMode } from './FlightService.types';
 import { BaseFlightService } from './BaseFlightService';
 import { IFlightRepository } from '../interfaces/IFlightRepository';
+import { RiskManagerService } from './RiskManagerService';
 import { FlightDTO } from '../models/Flight.types';
 import { logger } from '../utils/logger';
 
@@ -12,7 +13,7 @@ const SIMULATION_STEP_MS = 5000;
 export class SnapService extends BaseFlightService {
   private simulatedFlights: FlightDTO[] = [];
 
-  constructor(repository: IFlightRepository) {
+  constructor(repository: IFlightRepository, private riskManager: RiskManagerService) {
     super(repository, 'SNAP' as RunMode);
   }
 
@@ -63,6 +64,8 @@ export class SnapService extends BaseFlightService {
   }
 
   private moveFlights(): void {
+    // In a real scenario we'd remove some flights to simulate disappearances
+    // For now we just move them
     this.simulatedFlights.forEach(f => {
       const rad = (f.trueTrack * Math.PI) / 180;
       const speed = f.velocity / 100000;
@@ -80,7 +83,11 @@ export class SnapService extends BaseFlightService {
         upsert: true
       }
     }));
-    if (bulkOps.length > 0) await this.repository.bulkWrite(bulkOps);
+    if (bulkOps.length > 0) {
+      await this.repository.bulkWrite(bulkOps);
+      // Trigger risk management pipeline
+      await this.riskManager.processUpdates(this.simulatedFlights);
+    }
   }
 
   protected async cleanup(): Promise<void> {

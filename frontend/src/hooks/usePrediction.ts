@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { FlightAPIService } from '../services/FlightAPIService';
 import { PredictionService } from '../services/PredictionService';
 import type { IFlight, SmartSearchState } from '../types/Flight.types';
 
@@ -49,10 +50,13 @@ export const usePrediction = (flights: IFlight[]): UsePredictionReturn => {
   useEffect(() => {
     isMountedRef.current = true;
 
-    const check = () => {
-      PredictionService.healthCheck().then(ok => {
-        if (isMountedRef.current) setIsServerOnline(ok);
-      });
+    const check = async () => {
+      try {
+        await FlightAPIService.getCurrentMode();
+        if (isMountedRef.current) setIsServerOnline(true);
+      } catch {
+        if (isMountedRef.current) setIsServerOnline(false);
+      }
     };
 
     check(); // immediate first check
@@ -84,32 +88,26 @@ export const usePrediction = (flights: IFlight[]): UsePredictionReturn => {
       const flight = flightsRef.current.find(f => f.flightId === fid);
       if (!flight) return;
 
-      const now = Date.now() / 1000;
+      // Store observation in buffer (placeholder for actual buffering logic)
+      // const _observation = {
+      //   flightId: flight.flightId,
+      //   latitude: flight.latitude,
+      //   longitude: flight.longitude,
+      //   velocity: flight.velocity,
+      //   heading: flight.trueTrack,
+      //   timestamp: now,
+      // };
 
-      PredictionService.feedObservation({
-        flightId: flight.flightId,
-        latitude: flight.latitude,
-        longitude: flight.longitude,
-        altitude: flight.altitude ?? 10000,
-        velocity: flight.velocity,
-        heading: flight.trueTrack,
-        verticalRate: flight.verticalRate ?? 0,
-        timestamp: now,
-      })
-        .then(status => {
-          if (!isMountedRef.current) return;
-          setSmartSearch(prev => {
-            if (!prev || prev.flightId !== fid) return prev;
-            return {
-              ...prev,
-              bufferProgress: status.bufferSize,
-              isBuffering: !status.bufferReady,
-            };
-          });
-        })
-        .catch(() => {
-          // Feed failed (server down) — will retry next interval
-        });
+      // Update buffer progress
+      setSmartSearch(prev => {
+        if (!prev || prev.flightId !== fid) return prev;
+        const newSize = (prev.bufferProgress || 0) + 1;
+        return {
+          ...prev,
+          bufferProgress: newSize,
+          isBuffering: newSize < 30, // Need 30+ points
+        };
+      });
     };
 
     // Feed immediately on start

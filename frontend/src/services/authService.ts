@@ -13,12 +13,12 @@ const axiosInstance = axios.create({
 });
 
 export const authService = {
-  login: async (username, password) => {
+  login: async (username: string, password: string) => {
     const response = await axiosInstance.post('/api/auth/login', { username, password });
     return response.data;
   },
 
-  register: async (username, email, password) => {
+  register: async (username: string, email: string, password: string) => {
     const response = await axiosInstance.post('/api/auth/register', { username, email, password });
     return response.data;
   },

@@ -67,6 +67,13 @@ export class FlightAPIService {
     });
   }
 
+  static async getFlightHistory(
+    flightId: string,
+    limit: number = 30
+  ): Promise<any[]> {
+    return this.fetchJSON<any[]>(`/flights/${flightId}/history?limit=${limit}`);
+  }
+
   static async toggleGhostStatus(flightId: string): Promise<void> {
     await this.fetchJSON<{ success: boolean }>(`/flights/${flightId}/toggle-ghost`, {
       method: 'POST'
@@ -82,6 +89,13 @@ export class FlightAPIService {
     await this.fetchJSON<{ mode: RunMode }>('/config/mode', {
       method: 'POST',
       body: JSON.stringify({ mode })
+    });
+  }
+
+  static async predictSmartSearch(history: any[]): Promise<any> {
+    return this.fetchJSON<any>('/predict/smart-search', {
+      method: 'POST',
+      body: JSON.stringify({ history })
     });
   }
 }

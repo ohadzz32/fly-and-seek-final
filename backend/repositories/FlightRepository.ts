@@ -1,4 +1,5 @@
 import { Flight } from '../models/Flight';
+import { FlightHistory } from '../models/FlightHistory';
 import { IFlightRepository, BulkWriteOperation } from '../interfaces/IFlightRepository';
 import { IFlight } from '../models/Flight.types';
 import { AppError } from '../utils/errors';
@@ -30,6 +31,27 @@ export class FlightRepository implements IFlightRepository {
   async bulkWrite(operations: BulkWriteOperation[]): Promise<void> {
     try {
       const result = await Flight.bulkWrite(operations);
+      
+      // Auto-save history for each update in the bulk operation
+      const historyEntries = operations
+        .filter(op => op.updateOne && op.updateOne.update.$set)
+        .map(op => {
+          const update = op.updateOne.update.$set!;
+          return {
+            flightId: op.updateOne.filter.flightId as string,
+            latitude: update.latitude,
+            longitude: update.longitude,
+            velocity: update.velocity || 0,
+            heading: (update as any).trueTrack || 0,
+            timestamp: new Date()
+          };
+        })
+        .filter(entry => entry.latitude !== undefined && entry.longitude !== undefined);
+
+      if (historyEntries.length > 0) {
+        await FlightHistory.insertMany(historyEntries);
+      }
+
       logger.info(`Bulk write completed: ${result.modifiedCount} modified, ${result.upsertedCount} inserted`);
     } catch (error) {
       logger.error('Bulk write operation failed', { error });
@@ -46,13 +68,46 @@ export class FlightRepository implements IFlightRepository {
       ).lean().exec();
 
       if (updatedFlight) {
-        logger.info(`Flight ${flightId} updated successfully`);
+        // Save to history
+        await FlightHistory.create({
+          flightId,
+          latitude: updatedFlight.latitude,
+          longitude: updatedFlight.longitude,
+          velocity: updatedFlight.velocity,
+          heading: updatedFlight.trueTrack,
+          timestamp: new Date()
+        });
+        logger.info(`Flight ${flightId} updated successfully and history recorded`);
       }
 
       return updatedFlight as IFlight | null;
     } catch (error) {
       logger.error(`Failed to update flight: ${flightId}`, { error });
       throw new AppError('Update operation failed', 500, error as Error);
+    }
+  }
+
+  async getHistory(flightId: string, limit: number): Promise<any[]> {
+    try {
+      const history = await FlightHistory.find({ flightId })
+        .sort({ timestamp: -1 })
+        .limit(limit)
+        .lean()
+        .exec();
+      
+      // Return in chronological order (oldest to newest) for the ML model
+      return history.reverse().map(h => ({
+        lat: h.latitude,
+        lon: h.longitude,
+        alt: (h as any).altitude || 10000,
+        velocity: h.velocity,
+        heading: (h as any).heading || 0,
+        time: new Date(h.timestamp).getTime() / 1000,
+        vertical_rate: (h as any).verticalRate || 0
+      }));
+    } catch (error) {
+      logger.error(`Failed to fetch history for flight: ${flightId}`, { error });
+      throw new AppError('History query failed', 500, error as Error);
     }
   }
 

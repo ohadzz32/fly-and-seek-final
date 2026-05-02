@@ -36,6 +36,19 @@ export class FlightController {
     });
   }
 
+  async getFlightHistory(req: Request, res: Response): Promise<void> {
+    const { id } = req.params;
+    const limit = parseInt(req.query.limit as string) || 30;
+
+    logger.info(`Fetching history for flight ${id} (limit: ${limit})`);
+    const history = await this.repository.getHistory(id, limit);
+
+    res.json({
+      success: true,
+      data: history
+    });
+  }
+
 async toggleGhostStatus(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
     const flight = await this.repository.findById(id);

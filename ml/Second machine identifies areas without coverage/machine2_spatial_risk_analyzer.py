@@ -2,32 +2,15 @@
 Fly and Seek - Spatial Risk Analyzer (Machine 2)
 
 Pipeline:
-1. Load and sort telemetry by (icao24, time).
+1. Load and sort telemetry by (icao24, time) from stdin (JSON).
 2. Detect dead-zone gaps (1 -> 0 ... -> 1) with duration > 20s.
 3. Reconstruct missing shadow points every 10s using dead reckoning
    (velocity + heading) and drift correction to match reconnection point.
 4. Convert points to H3 cells (resolution 6 by default).
 5. Aggregate risk metrics per H3 cell and export Deck.gl-ready JSON.
 
-Input CSV columns (required):
-- time, icao24, x, y, z, velocity, heading, status
-
-Output JSON format:
-[
-  {
-    "h3_index": "861f1d4afffffff",
-    "risk_score": 75.2,
-    "total_flights": 20,
-    "lost_signal_count": 15,
-    "avg_alt": 30000.0,
-    "confidence_level": "high"
-  }
-]
-
-Notes:
-- If x/y are already lon/lat, script auto-detects and uses them directly.
-- If x/y are UTM/projected meters, provide --input-crs (for example EPSG:32636).
-- Haversine/geodesic spherical formulas are used for projection calculations.
+Input JSON from stdin expects a list of objects with:
+- time, icao24, lat, lon, alt, velocity, heading, status
 """
 
 from __future__ import annotations
@@ -35,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -49,11 +33,6 @@ except ImportError as exc:
         "Missing dependency 'h3'. Install with: pip install h3"
     ) from exc
 
-try:
-    from pyproj import Transformer
-except ImportError:
-    Transformer = None
-
 EARTH_RADIUS_M = 6_371_000.0
 
 
@@ -67,65 +46,68 @@ class Gap:
 
 @dataclass
 class AnalyzerConfig:
-    input_csv: Path
     output_json: Path
     h3_resolution: int = 6
     min_gap_seconds: int = 20
     shadow_step_seconds: int = 10
-    input_crs: Optional[str] = None
     confidence_low_threshold: int = 5
     confidence_high_threshold: int = 20
 
 
 def parse_args() -> AnalyzerConfig:
-    default_input = Path("Second machine identifies areas without coverage.csv")
     default_output = Path("machine2_h3_risk_output.json")
 
     parser = argparse.ArgumentParser(
         description="Fly and Seek Spatial Risk Analyzer (Machine 2)"
     )
-    parser.add_argument("--input", type=Path, default=default_input, help="Input CSV file path")
     parser.add_argument("--output", type=Path, default=default_output, help="Output JSON file path")
     parser.add_argument("--h3-resolution", type=int, default=6, help="H3 resolution")
     parser.add_argument("--min-gap-seconds", type=int, default=20, help="Minimum gap duration to process")
     parser.add_argument("--shadow-step-seconds", type=int, default=10, help="Shadow point interval in seconds")
-    parser.add_argument(
-        "--input-crs",
-        type=str,
-        default=None,
-        help="CRS for x/y if projected (example: EPSG:32636). If omitted, x/y must be lon/lat.",
-    )
     parser.add_argument("--confidence-low-threshold", type=int, default=5)
     parser.add_argument("--confidence-high-threshold", type=int, default=20)
 
     args = parser.parse_args()
     return AnalyzerConfig(
-        input_csv=args.input,
         output_json=args.output,
         h3_resolution=args.h3_resolution,
         min_gap_seconds=args.min_gap_seconds,
         shadow_step_seconds=args.shadow_step_seconds,
-        input_crs=args.input_crs,
         confidence_low_threshold=args.confidence_low_threshold,
         confidence_high_threshold=args.confidence_high_threshold,
     )
 
 
-def load_and_prepare(csv_path: Path) -> pd.DataFrame:
-    required = ["time", "icao24", "x", "y", "z", "velocity", "heading", "status"]
+def load_and_prepare() -> pd.DataFrame:
+    required = ["time", "icao24", "lat", "lon", "alt", "velocity", "heading", "status"]
+    
+    input_data = sys.stdin.read()
+    if not input_data.strip():
+        return pd.DataFrame(columns=["time", "icao24", "lat", "lon", "z", "velocity", "heading", "status"])
+        
+    try:
+        data = json.loads(input_data)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Failed to decode JSON from stdin: {e}")
 
-    df = pd.read_csv(csv_path)
+    df = pd.DataFrame(data)
+    
     missing = [c for c in required if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
 
     df = df[required].copy()
+    df = df.rename(columns={"alt": "z"})
+    
     df["time"] = pd.to_numeric(df["time"], errors="coerce").astype("Int64")
     df["icao24"] = df["icao24"].astype(str)
-    for c in ["x", "y", "z", "velocity", "heading", "status"]:
+    for c in ["lat", "lon", "z", "velocity", "heading", "status"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    df = df.dropna(subset=required)
+    df = df.dropna(subset=["time", "icao24", "lat", "lon", "z", "velocity", "heading", "status"])
+    if df.empty:
+        return df
+
     df["time"] = df["time"].astype(np.int64)
     df["status"] = df["status"].astype(np.int8)
 
@@ -134,37 +116,6 @@ def load_and_prepare(csv_path: Path) -> pd.DataFrame:
     df = df.drop_duplicates(subset=["icao24", "time"], keep="last")
     df = df.reset_index(drop=True)
     return df
-
-
-def xy_looks_like_lon_lat(x: pd.Series, y: pd.Series) -> bool:
-    x_ok = x.between(-180, 180).mean() > 0.995
-    y_ok = y.between(-90, 90).mean() > 0.995
-    return bool(x_ok and y_ok)
-
-
-def convert_xy_to_lon_lat(df: pd.DataFrame, input_crs: Optional[str]) -> pd.DataFrame:
-    out = df.copy()
-
-    if xy_looks_like_lon_lat(out["x"], out["y"]):
-        out["lon"] = out["x"].astype(float)
-        out["lat"] = out["y"].astype(float)
-        return out
-
-    if not input_crs:
-        raise ValueError(
-            "x/y are not lon/lat. Provide --input-crs (for example EPSG:32636 for UTM)."
-        )
-
-    if Transformer is None:
-        raise ValueError(
-            "pyproj is required for projected coordinates. Install with: pip install pyproj"
-        )
-
-    transformer = Transformer.from_crs(input_crs, "EPSG:4326", always_xy=True)
-    lon, lat = transformer.transform(out["x"].to_numpy(), out["y"].to_numpy())
-    out["lon"] = lon
-    out["lat"] = lat
-    return out
 
 
 def normalize_heading_deg(heading_deg: float) -> float:
@@ -382,8 +333,14 @@ def aggregate_h3_risk(points: pd.DataFrame, cfg: AnalyzerConfig) -> pd.DataFrame
 
 
 def run_pipeline(cfg: AnalyzerConfig) -> Tuple[pd.DataFrame, Dict[str, int]]:
-    df = load_and_prepare(cfg.input_csv)
-    df = convert_xy_to_lon_lat(df, cfg.input_crs)
+    df = load_and_prepare()
+
+    if df.empty:
+        return pd.DataFrame(columns=[
+            "h3_index", "risk_score", "total_flights", "lost_signal_count", "avg_alt", "confidence_level"
+        ]), {
+            "input_rows": 0, "shadow_points": 0, "total_points_for_h3": 0, "detected_gaps": 0, "h3_cells": 0
+        }
 
     original_points = df[["time", "icao24", "lat", "lon", "z", "status"]].copy()
     original_points["is_shadow"] = np.zeros(len(original_points), dtype=np.int8)

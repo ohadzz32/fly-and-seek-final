@@ -40,3 +40,30 @@ export interface ContextMenuState {
   visible: boolean;
   aircraftId: string | null;
 }
+
+export interface SmartSearchState {
+  flightId: string;
+  isBuffering: boolean;
+  bufferProgress: number;
+  isPredicting: boolean;
+  predictedPosition: {
+    latitude: number;
+    longitude: number;
+    altitude?: number;
+    step?: number;
+    confidence?: number;
+    uncertainty_m?: number;
+  } | null;
+  actualPosition: {
+    latitude: number;
+    longitude: number;
+  } | null;
+  driftMeters: number;
+  predictedPath: [number, number][];
+  actualPath: [number, number][];
+  totalSteps: number;
+  startPosition: {
+    latitude: number;
+    longitude: number;
+  } | null;
+}

@@ -2,6 +2,7 @@ import axios from 'axios';
 import { RunMode } from './FlightService.types';
 import { BaseFlightService } from './BaseFlightService';
 import { IFlightRepository } from '../interfaces/IFlightRepository';
+import { RiskManagerService } from './RiskManagerService';
 import { FlightDTO } from '../models/Flight.types';
 import { logger } from '../utils/logger';
 
@@ -10,7 +11,7 @@ const AUTH_URL = 'https://auth.opensky-network.org/auth/realms/opensky-network/p
 const FETCH_INTERVAL_MS = 15000;
 
 export class RealTimeService extends BaseFlightService {
-  constructor(repository: IFlightRepository) {
+  constructor(repository: IFlightRepository, private riskManager: RiskManagerService) {
     super(repository, 'REALTIME' as RunMode);
   }
 
@@ -88,6 +89,9 @@ export class RealTimeService extends BaseFlightService {
     }));
     await this.repository.bulkWrite(bulkOps);
     logger.info(`✅ Updated ${flights.length} flights in database`);
+    
+    // Trigger risk management pipeline
+    await this.riskManager.processUpdates(flights);
   }
 
   protected async cleanup(): Promise<void> {

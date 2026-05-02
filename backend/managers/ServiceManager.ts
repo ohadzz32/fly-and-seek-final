@@ -28,6 +28,10 @@ export class ServiceManager {
       }
 
       logger.info(`Switching to ${newMode} mode`);
+      
+      // Reset tracking state to avoid false disappearances between mode switches
+      this.container.getRiskManagerService().resetTracking();
+
       this.currentService = this.container.createFlightService(newMode);
       
       await this.currentService.start();
@@ -48,3 +52,4 @@ export class ServiceManager {
     }
   }
 }
+

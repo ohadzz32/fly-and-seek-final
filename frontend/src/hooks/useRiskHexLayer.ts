@@ -34,9 +34,10 @@ export function useRiskHexLayer({ riskCells, visible = true }: UseRiskHexLayerPr
 			extruded: true,
 			wireframe: false,
 			opacity: 0.7,
+			coverage: 0.9,
 			getHexagon: (d: RiskHexCell) => d.hex,
 			getFillColor: (d: RiskHexCell) => [...hexToRgb(d.color), 210],
-			getElevation: (d: RiskHexCell) => Math.pow(d.risk, 1.8) * 1600,
+			getElevation: (d: RiskHexCell) => Math.pow(d.risk, 1.8) * 2200,
 			elevationScale: 1,
 			material: {
 				ambient: 0.3,

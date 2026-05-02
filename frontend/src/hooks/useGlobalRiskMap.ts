@@ -17,20 +17,17 @@ export function useGlobalRiskMap(): UseGlobalRiskMapReturn {
 
 		const load = async () => {
 			try {
-				setLoading(true);
 				setError(null);
 
-				const response = await fetch('/map_data.json');
+				const response = await fetch('http://localhost:3001/api/risk/map');
 				if (!response.ok) {
 					throw new Error('Failed to load risk map data');
 				}
 
 				const payload = await response.json();
 				if (!Array.isArray(payload)) {
-					throw new Error('map_data.json must be an array');
+					throw new Error('API response must be an array');
 				}
-
-				console.log('Loaded Data:', payload);
 
 				if (active) {
 					setRiskCells(payload as RiskHexCell[]);
@@ -38,7 +35,6 @@ export function useGlobalRiskMap(): UseGlobalRiskMapReturn {
 			} catch (err) {
 				if (active) {
 					setError(err instanceof Error ? err.message : 'Failed to load risk map');
-					setRiskCells([]);
 				}
 			} finally {
 				if (active) {
@@ -47,10 +43,14 @@ export function useGlobalRiskMap(): UseGlobalRiskMapReturn {
 			}
 		};
 
+		setLoading(true);
 		load();
+		
+		const intervalId = setInterval(load, 5000);
 
 		return () => {
 			active = false;
+			clearInterval(intervalId);
 		};
 	}, []);
 
@@ -62,3 +62,4 @@ export function useGlobalRiskMap(): UseGlobalRiskMapReturn {
 		error
 	};
 }
+

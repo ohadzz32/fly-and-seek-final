@@ -1,8 +1,8 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Map } from 'react-map-gl/maplibre';
-import { IconLayer } from '@deck.gl/layers';
-import type { PickingInfo } from '@deck.gl/core';
+import { IconLayer, ScatterplotLayer, LineLayer } from '@deck.gl/layers';
+import type { Layer, PickingInfo } from '@deck.gl/core';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -15,17 +15,25 @@ import { useContextMenu } from './hooks/useContextMenu';
 import { useSearchAreaLayers } from './hooks/useSearchAreaLayers';
 import { useGlobalRiskMap } from './hooks/useGlobalRiskMap';
 import { useRiskHexLayer } from './hooks/useRiskHexLayer';
+import { useSmartSearch } from './hooks/useSmartSearch';
 
 import { ModeSelector } from './components/ModeSelector';
 import { ColorPicker } from './components/ColorPicker';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { AircraftContextMenu } from './components/AircraftContextMenu';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { RiskLegend } from './components/RiskLegend';
+import { RiskMapToggle } from './components/RiskMapToggle';
 
 import type { IFlight } from './types/Flight.types';
 import type { RiskHexCell } from './types/RiskMap.types';
 import { RunMode } from './types/enums';
-import { INITIAL_VIEW_STATE, MAP_STYLE_URL, BIRD_ICON_URL } from './constants/mapConfig';
+import { 
+  INITIAL_VIEW_STATE, 
+  MAP_STYLE_URL, 
+  BIRD_ICON_URL,
+  AIRPLANE_ICON_URL 
+} from './constants/mapConfig';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { EntranceScreen } from './components/EntranceScreen';
@@ -53,7 +61,17 @@ const BIRD_ICON_MAPPING = {
   }
 };
 
+const AIRCRAFT_ICON_MAPPING = {
+  airplane: {
+    x: 0, y: 0,
+    width: 512, height: 512,
+    mask: true,
+    anchorX: 256, anchorY: 256
+  }
+};
+
 function MainContent() {
+  const [showRiskMap, setShowRiskMap] = useState(false);
   const { 
     currentMode, 
     changeMode, 
@@ -67,7 +85,7 @@ function MainContent() {
   const { birds } = useBirdData(isOffline);
   const isMapReady = useMapReady(150);
   const { riskCells } = useGlobalRiskMap();
-  const riskHexLayer = useRiskHexLayer({ riskCells, visible: true });
+  const riskHexLayer = useRiskHexLayer({ riskCells, visible: showRiskMap });
   
   const {
     searchAreas,
@@ -84,6 +102,8 @@ function MainContent() {
   const { contextMenu, openMenu, closeMenu } = useContextMenu();
   const [selectedFlight, setSelectedFlight] = useState<IFlight | null>(null);
   
+  const smartSearch = useSmartSearch(contextMenu.aircraft);
+
   const deckRef = useRef<any>(null);
 
   const handleFlightClick = useCallback((flight: IFlight) => {
@@ -144,9 +164,62 @@ function MainContent() {
   }, [isOffline, birdsKey, birds]);
 
   const layers = useMemo(() => {
-    const dynamicLayers = isOffline ? birdLayers : aircraftLayers;
-    return riskHexLayer ? [riskHexLayer, ...dynamicLayers] : dynamicLayers;
-  }, [isOffline, birdLayers, aircraftLayers, riskHexLayer]);
+    const dynamicLayers: Layer<any>[] = (isOffline ? birdLayers : aircraftLayers) as Layer<any>[];
+    const finalLayers: Layer<any>[] = (riskHexLayer && showRiskMap)
+      ? [riskHexLayer as Layer<any>, ...dynamicLayers]
+      : [...dynamicLayers];
+
+    if (smartSearch.isActive && smartSearch.prediction && smartSearch.trackedFlight && !showRiskMap) {
+      const pred = smartSearch.prediction;
+      const aircraft = smartSearch.trackedFlight;
+      
+      console.log('[App] 🎨 Rendering Smart Search layers for:', aircraft.flightId, 'at', pred);
+
+      finalLayers.push(
+        new ScatterplotLayer<any>({
+          id: 'smart-search-area',
+          data: [pred],
+          getPosition: (d) => [d.longitude, d.latitude],
+          getRadius: (d) => Math.min(d.uncertainty_m || 500, 10000), // Cap at 10km
+          getFillColor: [255, 0, 0, 80], // Light Red (Transparent)
+          getLineColor: [255, 255, 255, 255],
+          stroked: true,
+          lineWidthMinPixels: 3
+        })
+      );
+
+      finalLayers.push(
+        new LineLayer<any>({
+          id: 'smart-search-connection',
+          data: [{ 
+            source: [aircraft.longitude, aircraft.latitude],
+            target: [pred.longitude, pred.latitude]
+          }],
+          getSourcePosition: (d) => d.source,
+          getTargetPosition: (d) => d.target,
+          getColor: [255, 0, 0, 255], // Bright Solid Red
+          getWidth: 6,
+          widthMinPixels: 4
+        })
+      );
+
+      finalLayers.push(
+        new IconLayer<any>({
+          id: 'smart-search-prediction',
+          data: [pred],
+          iconAtlas: AIRPLANE_ICON_URL,
+          iconMapping: AIRCRAFT_ICON_MAPPING,
+          getIcon: () => 'airplane',
+          getPosition: (d) => [d.longitude, d.latitude],
+          getSize: 45,
+          getColor: [255, 50, 0, 255], // Bright Orange-Red
+          getAngle: () => -(aircraft.trueTrack || 0)
+        })
+      );
+    }
+
+    return finalLayers;
+  }, [isOffline, birdLayers, aircraftLayers, riskHexLayer, showRiskMap, smartSearch.isActive, smartSearch.prediction, smartSearch.trackedFlight]);
 
   const getTooltip = useCallback((info: PickingInfo) => {
     if (info.layer?.id !== 'risk-h3-layer' || !info.object) {
@@ -195,6 +268,10 @@ function MainContent() {
           error={modeError}
         />
 
+        <RiskMapToggle showRiskMap={showRiskMap} onToggle={setShowRiskMap} />
+
+        {showRiskMap && <RiskLegend />}
+
         {isMapReady ? (
           <DeckGL
             ref={deckRef}
@@ -217,7 +294,7 @@ function MainContent() {
             aircraft={contextMenu.aircraft}
             hasSearchArea={hasSearchArea(contextMenu.aircraft.flightId)}
             onOpenRegularSearch={() => toggleSearchArea(contextMenu.aircraft!, 'regular')}
-            onOpenSmartSearch={() => console.log('Smart search not implemented')}
+            onOpenSmartSearch={() => smartSearch.setIsActive(!smartSearch.isActive)}
             onClose={closeMenu}
           />
         )}

@@ -28,4 +28,6 @@ export interface IFlightRepository {
   deleteOne(flightId: string): Promise<void>;
 
   create(flightData: Partial<IFlight>): Promise<IFlight>;
+
+  getHistory(flightId: string, limit: number): Promise<any[]>;
 }

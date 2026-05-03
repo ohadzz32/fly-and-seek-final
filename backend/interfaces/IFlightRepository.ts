@@ -30,4 +30,6 @@ export interface IFlightRepository {
   create(flightData: Partial<IFlight>): Promise<IFlight>;
 
   getHistory(flightId: string, limit: number): Promise<any[]>;
+
+  deleteStaleFlights?(olderThan: Date): Promise<void>;
 }

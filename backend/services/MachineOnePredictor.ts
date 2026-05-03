@@ -16,9 +16,9 @@ export class MachineOnePredictor implements IPredictionProvider {
 
     public async predict(history: any[]): Promise<any> {
         return new Promise((resolve, reject) => {
-            logger.info(`[MachineOnePredictor] Starting ML prediction. History length: ${history.length}`);
-            logger.info(`[MachineOnePredictor] Script path: ${this.scriptPath}`);
-            logger.info(`[MachineOnePredictor] Python path: ${this.pythonPath}`);
+            // logger.info(`[MachineOnePredictor] Starting ML prediction. History length: ${history.length}`);
+            // logger.info(`[MachineOnePredictor] Script path: ${this.scriptPath}`);
+            // logger.info(`[MachineOnePredictor] Python path: ${this.pythonPath}`);
             
             const pythonProcess = spawn(this.pythonPath, [this.scriptPath]);
             
@@ -29,14 +29,14 @@ export class MachineOnePredictor implements IPredictionProvider {
             pythonProcess.stdout.on('data', (data) => {
                 const chunk = data.toString();
                 outputData += chunk;
-                logger.info(`[MachineOnePredictor] stdout chunk: ${chunk}`);
+                // logger.info(`[MachineOnePredictor] stdout chunk: ${chunk}`);
             });
 
-            // Handle errors
+            // Handle errors - print directly to preserve stylized format from Python
             pythonProcess.stderr.on('data', (data) => {
                 const chunk = data.toString();
                 errorData += chunk;
-                logger.error(`[MachineOnePredictor] stderr: ${chunk}`);
+                process.stderr.write(chunk);
             });
 
             pythonProcess.on('error', (err) => {
@@ -45,7 +45,7 @@ export class MachineOnePredictor implements IPredictionProvider {
             });
 
             pythonProcess.on('close', (code) => {
-                logger.info(`[MachineOnePredictor] Python process closed with code ${code}`);
+                // logger.info(`[MachineOnePredictor] Python process closed with code ${code}`);
                 
                 if (code !== 0) {
                     logger.error(`[MachineOnePredictor] Prediction failed. Exit code: ${code}. Full stderr: ${errorData}`);
@@ -61,7 +61,7 @@ export class MachineOnePredictor implements IPredictionProvider {
                         }
                         return reject(new Error(result.error));
                     }
-                    logger.info(`[MachineOnePredictor] ✅ Prediction successful: ${JSON.stringify(result)}`);
+                    logger.info(`[MachineOnePredictor] ✅ Prediction successful`);
                     resolve(result);
                 } catch (e) {
                     logger.error(`[MachineOnePredictor] Failed to parse ML output as JSON. Output was: ${outputData}`);
@@ -72,7 +72,7 @@ export class MachineOnePredictor implements IPredictionProvider {
             // Feed the history to stdin
             try {
                 const inputJson = JSON.stringify(history);
-                logger.info(`[MachineOnePredictor] Writing ${inputJson.length} bytes to stdin`);
+                // logger.info(`[MachineOnePredictor] Writing ${inputJson.length} bytes to stdin`);
                 pythonProcess.stdin.write(inputJson);
                 pythonProcess.stdin.end();
             } catch (e) {

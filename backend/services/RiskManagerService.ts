@@ -30,7 +30,7 @@ export class RiskManagerService {
             } else {
                 logger.warn(`[RiskManagerService] Historic risk map file is empty at ${dataPath}`);
             }
-        } catch (error) {
+        } catch (error: any) {
             logger.error(`[RiskManagerService] Failed to load historic risk map:`, error);
         }
     }
@@ -48,7 +48,9 @@ export class RiskManagerService {
     public async processUpdates(currentFlights: FlightDTO[]): Promise<void> {
         if (!currentFlights || currentFlights.length === 0) return;
 
-        const currentFlightIds = new Set(currentFlights.map(f => f.flightId));
+        // Filter out jittery telemetry
+        const validCurrentFlights = currentFlights.filter(f => this.isValidTelemetry(f));
+        const currentFlightIds = new Set(validCurrentFlights.map(f => f.flightId));
         const disappearedFlights: FlightDTO[] = [];
 
         if (this.recentFlights.size > 0) {
@@ -60,19 +62,60 @@ export class RiskManagerService {
             }
         }
 
-        this.recentFlights.clear();
-        for (const f of currentFlights) {
-            this.recentFlights.set(f.flightId, f);
-        }
+        // Update recent flights tracking
+        validCurrentFlights.forEach(f => this.recentFlights.set(f.flightId, f));
 
-        if (disappearedFlights.length > 0) {
-            await this.triggerRiskAssessment(disappearedFlights);
-        }
+        // Always trigger assessment to include healthy traffic in the ratio
+        await this.triggerRiskAssessment(validCurrentFlights, disappearedFlights);
     }
 
-    private async triggerRiskAssessment(disappearedFlights: FlightDTO[]): Promise<void> {
+    private isValidTelemetry(flight: FlightDTO): boolean {
+        const prev = this.recentFlights.get(flight.flightId);
+        if (!prev) return true;
+
+        // Simple jitter check: max speed ~1200 km/h (333 m/s)
+        // Polling is 15s, so max travel is ~5km. We use 15km as a safe buffer for "impossible" jumps.
+        const distance = this.calculateDistance(
+            prev.latitude, prev.longitude,
+            flight.latitude, flight.longitude
+        );
+
+        if (distance > 15000) {
+            logger.warn(`[RiskManagerService] Jitter detected for ${flight.flightId}: ${Math.round(distance)}m jump. Ignoring frame.`);
+            return false;
+        }
+        return true;
+    }
+
+    private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+        const R = 6371e3; // Earth radius in meters
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c;
+    }
+
+    private async triggerRiskAssessment(liveFlights: FlightDTO[], disappearedFlights: FlightDTO[]): Promise<void> {
         try {
-            const telemetry = disappearedFlights.map(f => ({
+            const liveTelemetry = liveFlights.map(f => ({
+                icao24: f.flightId,
+                lat: f.latitude,
+                lon: f.longitude,
+                alt: 30000,
+                time: Date.now(),
+                velocity: f.velocity || 0,
+                heading: f.trueTrack || 0,
+                status: 1
+            }));
+
+            const lostTelemetry = disappearedFlights.map(f => ({
                 icao24: f.flightId,
                 lat: f.latitude,
                 lon: f.longitude,
@@ -83,6 +126,9 @@ export class RiskManagerService {
                 status: 0
             }));
 
+            const telemetry = [...liveTelemetry, ...lostTelemetry];
+            if (telemetry.length === 0) return;
+
             const rawData = await this.predictor.predict(telemetry);
 
             const existingHexes = new Map(this.globalRiskMap.map(cell => [cell.hex, cell]));
@@ -90,20 +136,22 @@ export class RiskManagerService {
             for (const item of rawData) {
                 const hex = item.h3_index;
                 const newRisk = (item.risk_score || 0) / 10;
-                const newLostSignalCount = item.lost_signal_count || 1;
+                const newLostSignalCount = item.lost_signal_count || 0;
                 const newAircraftCount = item.total_flights || 1;
 
                 if (existingHexes.has(hex)) {
                     const existing = existingHexes.get(hex);
-                    existing.risk = Math.max(existing.risk, newRisk);
+                    // Use weighted average or smoothing instead of Math.max to avoid permanent red
+                    existing.risk = (existing.risk * 0.7) + (newRisk * 0.3);
+                    
+                    if (!existing.details) existing.details = {};
                     existing.details.lost_signal_count = (existing.details.lost_signal_count || 0) + newLostSignalCount;
                     existing.details.aircraft_count = (existing.details.aircraft_count || 0) + newAircraftCount;
                     
                     existing.color = this.getColorForRisk(existing.risk);
                     existing.label = this.getLabelForRisk(existing.risk);
-                    
-                    existingHexes.set(hex, existing);
-                } else {
+                } else if (newLostSignalCount > 0) {
+                    // Only add new hexes if they actually have a lost signal
                     existingHexes.set(hex, {
                         hex: hex,
                         risk: newRisk,
@@ -122,7 +170,7 @@ export class RiskManagerService {
             this.globalRiskMap = Array.from(existingHexes.values());
             logger.info(`[RiskManagerService] Risk map updated. Total hexes: ${this.globalRiskMap.length}`);
 
-        } catch (error) {
+        } catch (error: any) {
             logger.error(`[RiskManagerService] Failed risk assessment:`, error);
         }
     }

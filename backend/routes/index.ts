@@ -16,7 +16,7 @@ import {
 export function configureRoutes(serviceManager: ServiceManager): Router {
   const router = Router();
   
-  const flightController = new FlightController();
+  const flightController = new FlightController(serviceManager);
   const configController = new ConfigController(serviceManager);  
   const predictionController = new PredictionController();
   

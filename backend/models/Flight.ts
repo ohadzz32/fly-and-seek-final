@@ -10,7 +10,8 @@ const flightSchema = new Schema<IFlightDocument>(
       required: [true, 'Flight ID is required'],
       unique: true,
       trim: true,
-      index: true
+      index: true,
+      lowercase: true
     },
     latitude: {
       type: Number,
@@ -23,6 +24,11 @@ const flightSchema = new Schema<IFlightDocument>(
       required: [true, 'Longitude is required'],
       min: [-180, 'Longitude must be between -180 and 180'],
       max: [180, 'Longitude must be between -180 and 180']
+    },
+    altitude: {
+      type: Number,
+      min: [0, 'Altitude cannot be negative'],
+      default: 0
     },
     velocity: {
       type: Number,

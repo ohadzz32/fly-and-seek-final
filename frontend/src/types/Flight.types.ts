@@ -2,6 +2,7 @@ export interface IFlight {
   flightId: string;
   latitude: number;
   longitude: number;
+  altitude?: number;
   velocity: number;
   trueTrack: number;
   color: string;

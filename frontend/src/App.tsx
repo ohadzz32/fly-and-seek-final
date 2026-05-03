@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Map } from 'react-map-gl/maplibre';
-import { IconLayer, ScatterplotLayer, LineLayer } from '@deck.gl/layers';
+import { IconLayer, LineLayer, PolygonLayer } from '@deck.gl/layers';
 import type { Layer, PickingInfo } from '@deck.gl/core';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -52,6 +52,49 @@ function initializeRTLPlugin() {
   }
 }
 
+// Simple seeded PRNG
+function pseudoRandom(seed: number) {
+  let t = seed += 0x6D2B79F5;
+  t = Math.imul(t ^ t >>> 15, t | 1);
+  t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+  return ((t ^ t >>> 14) >>> 0) / 4294967296;
+}
+
+function hashString(str: string) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
+}
+
+function generateAmorphousBlob(centerLon: number, centerLat: number, radiusMeters: number, flightId: string) {
+  const seed = hashString(flightId);
+  const points = 12;
+  const coordinates = [];
+  
+  // Approx meters to degrees
+  const latToDeg = 1 / 111320;
+  const lonToDeg = 1 / (111320 * Math.cos(centerLat * Math.PI / 180));
+
+  for (let i = 0; i < points; i++) {
+    const angle = (i / points) * Math.PI * 2;
+    const r = pseudoRandom(seed + i); 
+    const randomFactor = 0.8 + (r * 0.4); // 0.8 to 1.2
+    
+    const rMeters = radiusMeters * randomFactor;
+    
+    const dLon = rMeters * Math.sin(angle) * lonToDeg;
+    const dLat = rMeters * Math.cos(angle) * latToDeg;
+    
+    coordinates.push([centerLon + dLon, centerLat + dLat]);
+  }
+  
+  return [coordinates]; // PolygonLayer expects array of polygon rings
+}
+
 const BIRD_ICON_MAPPING = {
   bird: {
     x: 0, y: 0,
@@ -81,8 +124,12 @@ function MainContent() {
   
   const isOffline = currentMode === RunMode.OFFLINE;
 
-  const { flights, updateFlightColor } = useFlightData(currentMode);
-  const { birds } = useBirdData(isOffline);
+  const { flights, updateFlightColor, noData } = useFlightData(currentMode);
+  const normalizedFlights = useMemo(
+    () => flights.filter(flight => Number.isFinite(flight.latitude) && Number.isFinite(flight.longitude)),
+    [flights]
+  );
+  const { birds, loading: birdsLoading } = useBirdData(isOffline);
   const isMapReady = useMapReady(150);
   const { riskCells } = useGlobalRiskMap();
   const riskHexLayer = useRiskHexLayer({ riskCells, visible: showRiskMap });
@@ -102,7 +149,11 @@ function MainContent() {
   const { contextMenu, openMenu, closeMenu } = useContextMenu();
   const [selectedFlight, setSelectedFlight] = useState<IFlight | null>(null);
   
-  const smartSearch = useSmartSearch(contextMenu.aircraft);
+  const smartSearch = useSmartSearch();
+
+  useEffect(() => {
+    smartSearch.updateTrackedFlights(normalizedFlights);
+  }, [normalizedFlights, smartSearch.updateTrackedFlights]);
 
   const deckRef = useRef<any>(null);
 
@@ -136,9 +187,10 @@ function MainContent() {
 
   const aircraftLayers = useSearchAreaLayers({
     searchAreas,
-    flights,
+    flights: normalizedFlights,
     animationClock,
-    onFlightClick: handleFlightClick
+    onFlightClick: handleFlightClick,
+    smartSearchTrackedFlightIds: Object.keys(smartSearch.trackedFlights)
   });
 
   const birdsKey = useMemo(
@@ -169,57 +221,82 @@ function MainContent() {
       ? [riskHexLayer as Layer<any>, ...dynamicLayers]
       : [...dynamicLayers];
 
-    if (smartSearch.isActive && smartSearch.prediction && smartSearch.trackedFlight && !showRiskMap) {
-      const pred = smartSearch.prediction;
-      const aircraft = smartSearch.trackedFlight;
-      
-      console.log('[App] 🎨 Rendering Smart Search layers for:', aircraft.flightId, 'at', pred);
+    if (!showRiskMap) {
+      const trackedIds = Object.keys(smartSearch.trackedFlights);
+      for (const flightId of trackedIds) {
+        const pred = smartSearch.predictions[flightId];
+        const aircraft = smartSearch.trackedFlights[flightId];
 
-      finalLayers.push(
-        new ScatterplotLayer<any>({
-          id: 'smart-search-area',
-          data: [pred],
-          getPosition: (d) => [d.longitude, d.latitude],
-          getRadius: (d) => Math.min(d.uncertainty_m || 500, 10000), // Cap at 10km
-          getFillColor: [255, 0, 0, 80], // Light Red (Transparent)
-          getLineColor: [255, 255, 255, 255],
-          stroked: true,
-          lineWidthMinPixels: 3
-        })
-      );
+        // Stability Check: Ensure coordinates exist
+        if (pred && aircraft && aircraft.longitude !== undefined && aircraft.latitude !== undefined) {
+          
+          // Render Amorphous Polygon (HDR Blob) instead of Scatterplot
+          const uncertaintyRadius = Math.min(pred.uncertainty_m || 500, 10000);
+          const blobData = generateAmorphousBlob(pred.longitude, pred.latitude, uncertaintyRadius, aircraft.flightId);
 
-      finalLayers.push(
-        new LineLayer<any>({
-          id: 'smart-search-connection',
-          data: [{ 
-            source: [aircraft.longitude, aircraft.latitude],
-            target: [pred.longitude, pred.latitude]
-          }],
-          getSourcePosition: (d) => d.source,
-          getTargetPosition: (d) => d.target,
-          getColor: [255, 0, 0, 255], // Bright Solid Red
-          getWidth: 6,
-          widthMinPixels: 4
-        })
-      );
+          finalLayers.push(
+            new PolygonLayer<any>({
+              id: `smart-search-area-${flightId}`,
+              data: [{ polygon: blobData[0] }],
+              getPolygon: (d) => d.polygon,
+              getFillColor: [200, 230, 255, 40], // Transparent light blue
+              getLineColor: [255, 255, 255, 200], // Glowing white border
+              stroked: true,
+              filled: true,
+              lineWidthMinPixels: 2
+            })
+          );
 
-      finalLayers.push(
-        new IconLayer<any>({
-          id: 'smart-search-prediction',
-          data: [pred],
-          iconAtlas: AIRPLANE_ICON_URL,
-          iconMapping: AIRCRAFT_ICON_MAPPING,
-          getIcon: () => 'airplane',
-          getPosition: (d) => [d.longitude, d.latitude],
-          getSize: 45,
-          getColor: [255, 50, 0, 255], // Bright Orange-Red
-          getAngle: () => -(aircraft.trueTrack || 0)
-        })
-      );
+          finalLayers.push(
+            new LineLayer<any>({
+              id: `smart-search-connection-${flightId}`,
+              data: [{ 
+                source: [aircraft.longitude, aircraft.latitude],
+                target: [pred.longitude, pred.latitude]
+              }],
+              getSourcePosition: (d) => d.source,
+              getTargetPosition: (d) => d.target,
+              getColor: [255, 255, 255, 100], // Alpha 0.4
+              getWidth: 2,
+              widthMinPixels: 2
+            })
+          );
+
+          finalLayers.push(
+            new IconLayer<any>({
+              id: `smart-search-prediction-${flightId}`,
+              data: [pred],
+              iconAtlas: AIRPLANE_ICON_URL,
+              iconMapping: AIRCRAFT_ICON_MAPPING,
+              getIcon: () => 'airplane',
+              getPosition: (d) => [d.longitude, d.latitude],
+              getSize: 36, // 1.2x size of original (30 * 1.2)
+              getColor: [255, 255, 255, 255], // Pure White for Ghost/HDR effect
+              getAngle: () => {
+                const track = aircraft.trueTrack;
+                if (track === undefined || track === null) return 90;
+                return 90 - track;
+              },
+              billboard: false,
+              parameters: {
+                depthTest: false,
+                depthMask: false
+              } as any,
+              transitions: {
+                getPosition: {
+                  duration: 1000,
+                  type: 'interpolation'
+                },
+                getAngle: 2000
+              }
+            })
+          );
+        }
+      }
     }
 
     return finalLayers;
-  }, [isOffline, birdLayers, aircraftLayers, riskHexLayer, showRiskMap, smartSearch.isActive, smartSearch.prediction, smartSearch.trackedFlight]);
+  }, [isOffline, birdLayers, aircraftLayers, riskHexLayer, showRiskMap, smartSearch.trackedFlights, smartSearch.predictions]);
 
   const getTooltip = useCallback((info: PickingInfo) => {
     if (info.layer?.id !== 'risk-h3-layer' || !info.object) {
@@ -272,9 +349,24 @@ function MainContent() {
 
         {showRiskMap && <RiskLegend />}
 
-        {isMapReady ? (
+        {!isMapReady ? (
+          <LoadingSpinner message="Loading map..." />
+        ) : (() => {
+          const hasVisualData = isOffline ? birds.length > 0 : normalizedFlights.length > 0;
+          const noDataForMode = isOffline ? (!birdsLoading && birds.length === 0) : noData;
+
+          if (noDataForMode) {
+            return <LoadingSpinner message="No Data Available in this Mode" />;
+          }
+
+          if (!hasVisualData) {
+            return <LoadingSpinner message="Loading flights..." />;
+          }
+
+          return (
           <DeckGL
             ref={deckRef}
+            key={currentMode}
             initialViewState={INITIAL_VIEW_STATE}
             controller={true}
             layers={layers}
@@ -283,9 +375,8 @@ function MainContent() {
           >
             <Map mapStyle={MAP_STYLE_URL} reuseMaps={true} />
           </DeckGL>
-        ) : (
-          <LoadingSpinner message="אתחול מערכת רדאר..." />
-        )}
+          );
+        })()}
 
         {contextMenu.visible && contextMenu.aircraft && !isOffline && (
           <AircraftContextMenu
@@ -293,8 +384,9 @@ function MainContent() {
             y={contextMenu.y}
             aircraft={contextMenu.aircraft}
             hasSearchArea={hasSearchArea(contextMenu.aircraft.flightId)}
+            isSmartSearchActive={smartSearch.isTracking(contextMenu.aircraft.flightId)}
             onOpenRegularSearch={() => toggleSearchArea(contextMenu.aircraft!, 'regular')}
-            onOpenSmartSearch={() => smartSearch.setIsActive(!smartSearch.isActive)}
+            onOpenSmartSearch={() => smartSearch.toggleTracking(contextMenu.aircraft!)}
             onClose={closeMenu}
           />
         )}

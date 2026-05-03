@@ -2,140 +2,156 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { FlightAPIService } from '../services/FlightAPIService';
 import type { IFlight, SmartSearchState } from '../types/Flight.types';
 
-export const useSmartSearch = (selectedFlight: IFlight | null) => {
-    const [isActive, setIsActive] = useState(false);
-    const [trackedFlight, setTrackedFlight] = useState<IFlight | null>(null);
-    const [prediction, setPrediction] = useState<SmartSearchState['predictedPosition']>(null);
-    const [error, setError] = useState<string | null>(null);
-    const historyRef = useRef<any[]>([]);
+export const useSmartSearch = () => {
+    const [trackedFlights, setTrackedFlights] = useState<Record<string, IFlight>>({});
+    const [predictions, setPredictions] = useState<Record<string, SmartSearchState['predictedPosition']>>({});
+    const historyRef = useRef<Record<string, any[]>>({});
+    const simulatedCountRef = useRef<Record<string, number>>({});
+    const calibrationCompleteRef = useRef<Record<string, boolean>>({});
 
-    // Lock the flight when activated
-    useEffect(() => {
-        if (isActive && selectedFlight && !trackedFlight) {
-            console.log(`[useSmartSearch] 🔒 Locking flight: ${selectedFlight.flightId}`);
-            setTrackedFlight(selectedFlight);
-        }
-    }, [isActive, selectedFlight, trackedFlight]);
-
-    const runPrediction = useCallback(async () => {
-        const target = trackedFlight || selectedFlight;
-        if (!target) return;
-
-        console.log(`[useSmartSearch] 🚀 runPrediction triggered. History length: ${historyRef.current.length}`);
-        
-        if (historyRef.current.length < 30) {
-            console.warn(`[useSmartSearch] ⚠️ History too short: ${historyRef.current.length}/30 points`);
-            return;
-        }
-
-        try {
-            const historyToSend = historyRef.current.slice(-30);
-            console.log('[useSmartSearch] 📡 Sending prediction request to backend...', historyToSend);
-            const result = await FlightAPIService.predictSmartSearch(historyToSend);
-            console.log('[useSmartSearch] ✅ Raw Result from API:', result);
-            
-            if (result && typeof result.lat === 'number' && typeof result.lon === 'number') {
-                const newPrediction = {
-                    latitude: result.lat,
-                    longitude: result.lon,
-                    altitude: result.alt,
-                    confidence: result.confidence,
-                    uncertainty_m: result.uncertainty_m
-                };
-                console.log('[useSmartSearch] 📍 Setting prediction state:', newPrediction);
-                setPrediction(newPrediction);
-                setError(null);
+    const toggleTracking = useCallback((flight: IFlight) => {
+        setTrackedFlights(prev => {
+            const next = { ...prev };
+            if (next[flight.flightId]) {
+                // Remove
+                delete next[flight.flightId];
+                delete historyRef.current[flight.flightId];
+                delete simulatedCountRef.current[flight.flightId];
+                delete calibrationCompleteRef.current[flight.flightId];
+                setPredictions(p => {
+                    const nextP = { ...p };
+                    delete nextP[flight.flightId];
+                    return nextP;
+                });
             } else {
-                console.error('[useSmartSearch] ❌ Invalid prediction result format:', result);
-                setError('Invalid prediction format from server');
-            }
-        } catch (err: any) {
-            console.error('[useSmartSearch] ❌ Prediction error:', err);
-            setError(err.message);
-        }
-    }, [trackedFlight, selectedFlight]);
-
-    // Fetch historical data immediately upon activation
-    useEffect(() => {
-        const target = trackedFlight || selectedFlight;
-        if (isActive && target) {
-            const fetchHistory = async () => {
-                try {
-                    console.log(`[useSmartSearch] 📜 Fetching historical data for ${target.flightId}`);
-                    const history = await FlightAPIService.getFlightHistory(target.flightId, 30);
-                    
+                // Add
+                next[flight.flightId] = flight;
+                historyRef.current[flight.flightId] = [];
+                simulatedCountRef.current[flight.flightId] = 0;
+                calibrationCompleteRef.current[flight.flightId] = false;
+                
+                // Fetch history immediately
+                FlightAPIService.getFlightHistory(flight.flightId, 30).then(history => {
                     if (history.length > 0) {
-                        historyRef.current = history;
-                        console.log(`[useSmartSearch] ✅ History seeded with ${history.length} points`);
+                        historyRef.current[flight.flightId] = history;
+                        simulatedCountRef.current[flight.flightId] = Math.min(30, history.length);
+                    }
+                }).catch(() => {});
+            }
+            return next;
+        });
+    }, []);
+
+    const isTracking = useCallback((flightId: string) => {
+        return !!trackedFlights[flightId];
+    }, [trackedFlights]);
+
+    // Update existing tracked flights with new telemetry
+    const updateTrackedFlights = useCallback((latestFlights: IFlight[]) => {
+        setTrackedFlights(prev => {
+            let changed = false;
+            const next = { ...prev };
+            for (const f of latestFlights) {
+                if (next[f.flightId]) {
+                    next[f.flightId] = f;
+                    changed = true;
+                    
+                    const newPoint = {
+                        icao24: f.flightId,
+                        lat: f.latitude,
+                        lon: f.longitude,
+                        alt: 10000, 
+                        velocity: f.velocity,
+                        heading: f.trueTrack,
+                        time: Date.now() / 1000,
+                        vertical_rate: 0
+                    };
+                    
+                    const hist = historyRef.current[f.flightId] || [];
+                    const lastPoint = hist[hist.length - 1];
+                    if (!lastPoint || lastPoint.lat !== newPoint.lat || lastPoint.lon !== newPoint.lon) {
+                        historyRef.current[f.flightId] = [...hist, newPoint].slice(-50);
                         
-                        if (history.length >= 30) {
-                            runPrediction();
+                        if ((simulatedCountRef.current[f.flightId] || 0) < 30) {
+                            simulatedCountRef.current[f.flightId] = (simulatedCountRef.current[f.flightId] || 0) + 1;
                         }
                     }
-                } catch (err) {
-                    console.error('[useSmartSearch] ❌ Failed to fetch history:', err);
                 }
-            };
-            
-            fetchHistory();
-        }
-    }, [isActive, trackedFlight, selectedFlight, runPrediction]);
-
-    // Accumulate history points as the flight data updates
-    useEffect(() => {
-        const target = trackedFlight || selectedFlight;
-        if (target && isActive) {
-            const newPoint = {
-                lat: target.latitude,
-                lon: target.longitude,
-                alt: 10000, 
-                velocity: target.velocity,
-                heading: target.trueTrack,
-                time: Date.now() / 1000,
-                vertical_rate: 0
-            };
-            
-            const lastPoint = historyRef.current[historyRef.current.length - 1];
-            if (!lastPoint || 
-                lastPoint.lat !== newPoint.lat || 
-                lastPoint.lon !== newPoint.lon) {
-                
-                historyRef.current = [...historyRef.current, newPoint].slice(-50);
-                console.log(`[useSmartSearch] 📍 Added point to history. Count: ${historyRef.current.length}/30`);
             }
-        }
-    }, [trackedFlight, selectedFlight, isActive]);
+            return changed ? next : prev;
+        });
+    }, []);
 
-    // Reset history when the feature is turned OFF
+    const runPredictions = useCallback(async () => {
+        const currentTracked = Object.values(trackedFlights);
+        if (currentTracked.length === 0) return;
+
+        for (const target of currentTracked) {
+            const flightId = target.flightId;
+            const count = simulatedCountRef.current[flightId] || 0;
+            const hist = historyRef.current[flightId] || [];
+            
+            if (count >= 30 && !calibrationCompleteRef.current[flightId]) {
+                console.log('Calibration Complete');
+                calibrationCompleteRef.current[flightId] = true;
+            } else if (count < 30) {
+                console.log(`incomplete (${count}/30)`);
+            }
+
+            const itemsToSend = Math.min(count, hist.length);
+            const historyToSend = hist.slice(-Math.max(1, itemsToSend));
+
+            if (historyToSend.length === 0) continue;
+
+            try {
+                const result = await FlightAPIService.predictSmartSearch(historyToSend);
+                if (result && typeof result.lat === 'number' && typeof result.lon === 'number') {
+                    setPredictions(p => ({
+                        ...p,
+                        [flightId]: {
+                            latitude: result.lat,
+                            longitude: result.lon,
+                            altitude: result.alt,
+                            confidence: result.confidence,
+                            uncertainty_m: result.uncertainty_m
+                        }
+                    }));
+                }
+            } catch (err) {}
+        }
+    }, [trackedFlights]);
+
     useEffect(() => {
-        if (!isActive) {
-            console.log('[useSmartSearch] 🧹 Resetting history');
-            historyRef.current = [];
-            setPrediction(null);
-            setError(null);
-            setTrackedFlight(null);
+        let simInterval: NodeJS.Timeout;
+        const currentTracked = Object.keys(trackedFlights);
+        if (currentTracked.length > 0) {
+            simInterval = setInterval(() => {
+                for (const flightId of currentTracked) {
+                    if ((simulatedCountRef.current[flightId] || 0) < 30 && (historyRef.current[flightId]?.length || 0) > 0) {
+                        simulatedCountRef.current[flightId] += 1;
+                    }
+                }
+            }, 10000);
         }
-    }, [isActive]);
+        return () => clearInterval(simInterval);
+    }, [trackedFlights]);
 
-    // Periodically run prediction when active
     useEffect(() => {
         let interval: NodeJS.Timeout;
-        const target = trackedFlight || selectedFlight;
-        if (isActive && target) {
-            runPrediction(); 
-            interval = setInterval(runPrediction, 3000); 
+        if (Object.keys(trackedFlights).length > 0) {
+            runPredictions(); 
+            interval = setInterval(runPredictions, 10000);
         }
         return () => {
             if (interval) clearInterval(interval);
         };
-    }, [isActive, trackedFlight, selectedFlight, runPrediction]);
+    }, [trackedFlights, runPredictions]);
 
     return {
-        isActive,
-        setIsActive,
-        prediction,
-        error,
-        history: historyRef.current,
-        trackedFlight
+        trackedFlights,
+        predictions,
+        toggleTracking,
+        isTracking,
+        updateTrackedFlights
     };
 };

@@ -28,13 +28,15 @@ interface UseSearchAreaLayersProps {
   flights: IFlight[];
   animationClock: number;
   onFlightClick: (flight: IFlight) => void;
+  smartSearchTrackedFlightIds?: string[];
 }
 
 export const useSearchAreaLayers = ({
   searchAreas,
   flights,
   animationClock,
-  onFlightClick
+  onFlightClick,
+  smartSearchTrackedFlightIds = []
 }: UseSearchAreaLayersProps) => {
   
   const searchAreasRef = useRef(searchAreas);
@@ -57,7 +59,7 @@ export const useSearchAreaLayers = ({
   );
 
   const flightsKey = useMemo(
-    () => flights.map(f => `${f.flightId}:${f.longitude.toFixed(4)},${f.latitude.toFixed(4)}`).join('|'),
+    () => flights.map(f => `${f.flightId}:${f.color}:${f.longitude.toFixed(4)},${f.latitude.toFixed(4)}`).join('|'),
     [flights]
   );
 
@@ -108,7 +110,7 @@ export const useSearchAreaLayers = ({
           parameters: {
             depthTest: false,
             depthMask: false
-          },
+          } as any,
           lineWidthMinPixels: 2,
           updateTriggers: { getRadius: animationClock }
         })
@@ -140,7 +142,19 @@ export const useSearchAreaLayers = ({
           getPosition: (d: SearchArea) => [d.longitude, d.latitude],
           getSize: 30,
           getColor: COLORS.frozenAircraft,
-          getAngle: (d: SearchArea) => -(d.trueTrack || 0)
+          getAngle: (d: SearchArea) => 90 - (d.trueTrack || 0),
+          billboard: false,
+          parameters: {
+            depthTest: false,
+            depthMask: false
+          } as any,
+          transitions: {
+            getPosition: {
+              duration: 1000,
+              type: 'interpolation'
+            },
+            getAngle: 2000
+          }
         })
       );
     }
@@ -148,7 +162,10 @@ export const useSearchAreaLayers = ({
     layers.push(
       new IconLayer({
         id: 'live-aircraft-layer',
-        data: currentFlights,
+        data: currentFlights.filter(f => 
+          f && typeof f.latitude === 'number' && !isNaN(f.latitude) &&
+          typeof f.longitude === 'number' && !isNaN(f.longitude)
+        ),
         pickable: true,
         iconAtlas: AIRPLANE_ICON_URL,
         iconMapping: ICON_MAPPING,
@@ -156,21 +173,37 @@ export const useSearchAreaLayers = ({
         getPosition: (d: IFlight) => [d.longitude, d.latitude],
         getSize: 30,
         getColor: (d: IFlight) => {
+          if (smartSearchTrackedFlightIds.includes(d.flightId)) {
+            return [160, 160, 160, 255]; // Shadow effect for the real plane
+          }
           const isTracked = isFlightTracked(d.flightId, currentSearchAreas);
           return isTracked ? COLORS.ghostTrack : hexToRgb(d.color || '#FF4136');
         },
-        getAngle: (d: IFlight) => -(d.trueTrack || 0),
+        getAngle: (d: IFlight) => {
+          if (d.trueTrack === undefined || d.trueTrack === null) {
+             return 90; 
+          }
+          return 90 - d.trueTrack;
+        },
+        billboard: false,
+        parameters: {
+          depthTest: false,
+          depthMask: false
+        } as any,
         onClick: handleClick,
         transitions: {
-          getPosition: 2000,
-          getAngle: 500
+          getPosition: {
+            duration: 1000,
+            type: 'interpolation'
+          },
+          getAngle: 2000
         },
         updateTriggers: {
-          getColor: searchAreaIds
+          getColor: [searchAreaIds, flightsKey, smartSearchTrackedFlightIds.join(',')]
         }
       })
     );
 
     return layers;
-  }, [searchAreaIds, flightsKey, animationClock, handleClick]);
+  }, [searchAreaIds, flightsKey, animationClock, handleClick, smartSearchTrackedFlightIds.join(',')]);
 };

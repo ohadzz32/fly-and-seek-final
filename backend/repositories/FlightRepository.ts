@@ -20,7 +20,8 @@ export class FlightRepository implements IFlightRepository {
 
   async findById(flightId: string): Promise<IFlight | null> {
     try {
-      const flight = await Flight.findOne({ flightId }).lean().exec();
+      const normalizedId = flightId.toLowerCase();
+      const flight = await Flight.findOne({ flightId: normalizedId }).lean().exec();
       return flight as IFlight | null;
     } catch (error) {
       logger.error(`Failed to find flight: ${flightId}`, { error });
@@ -30,10 +31,21 @@ export class FlightRepository implements IFlightRepository {
 
   async bulkWrite(operations: BulkWriteOperation[]): Promise<void> {
     try {
-      const result = await Flight.bulkWrite(operations);
+      // Normalize flightId in all bulk operations
+      const normalizedOps = operations.map(op => {
+        if (op.updateOne) {
+          op.updateOne.filter.flightId = String(op.updateOne.filter.flightId).toLowerCase();
+          if (op.updateOne.update.$set) {
+            (op.updateOne.update.$set as any).flightId = String(op.updateOne.filter.flightId).toLowerCase();
+          }
+        }
+        return op;
+      });
+
+      const result = await Flight.bulkWrite(normalizedOps);
       
       // Auto-save history for each update in the bulk operation
-      const historyEntries = operations
+      const historyEntries = normalizedOps
         .filter(op => op.updateOne && op.updateOne.update.$set)
         .map(op => {
           const update = op.updateOne.update.$set!;
@@ -61,8 +73,9 @@ export class FlightRepository implements IFlightRepository {
 
   async updateOne(flightId: string, updates: Partial<IFlight>): Promise<IFlight | null> {
     try {
+      const normalizedId = flightId.toLowerCase();
       const updatedFlight = await Flight.findOneAndUpdate(
-        { flightId },
+        { flightId: normalizedId },
         { $set: updates },
         { new: true, runValidators: true }
       ).lean().exec();
@@ -70,14 +83,14 @@ export class FlightRepository implements IFlightRepository {
       if (updatedFlight) {
         // Save to history
         await FlightHistory.create({
-          flightId,
+          flightId: normalizedId,
           latitude: updatedFlight.latitude,
           longitude: updatedFlight.longitude,
           velocity: updatedFlight.velocity,
           heading: updatedFlight.trueTrack,
           timestamp: new Date()
         });
-        logger.info(`Flight ${flightId} updated successfully and history recorded`);
+        logger.info(`Flight ${normalizedId} updated successfully and history recorded`);
       }
 
       return updatedFlight as IFlight | null;
@@ -89,7 +102,8 @@ export class FlightRepository implements IFlightRepository {
 
   async getHistory(flightId: string, limit: number): Promise<any[]> {
     try {
-      const history = await FlightHistory.find({ flightId })
+      const normalizedId = flightId.toLowerCase();
+      const history = await FlightHistory.find({ flightId: normalizedId })
         .sort({ timestamp: -1 })
         .limit(limit)
         .lean()
@@ -123,9 +137,10 @@ export class FlightRepository implements IFlightRepository {
 
   async deleteOne(flightId: string): Promise<void> {
     try {
-      const result = await Flight.deleteOne({ flightId });
+      const normalizedId = flightId.toLowerCase();
+      const result = await Flight.deleteOne({ flightId: normalizedId });
       if (result.deletedCount > 0) {
-        logger.info(`Deleted flight: ${flightId}`);
+        logger.info(`Deleted flight: ${normalizedId}`);
       }
     } catch (error) {
       logger.error(`Failed to delete flight: ${flightId}`, { error });
@@ -135,17 +150,29 @@ export class FlightRepository implements IFlightRepository {
 
   async create(flightData: Partial<IFlight>): Promise<IFlight> {
     try {
+      const normalizedId = String(flightData.flightId).toLowerCase();
       const flight = await Flight.findOneAndUpdate(
-        { flightId: flightData.flightId },
-        { $set: flightData },
+        { flightId: normalizedId },
+        { $set: { ...flightData, flightId: normalizedId } },
         { new: true, upsert: true, runValidators: true }
       ).lean().exec();
 
-      logger.info(`Flight ${flightData.flightId} created/updated via upsert`);
+      logger.info(`Flight ${normalizedId} created/updated via upsert`);
       return flight as IFlight;
     } catch (error) {
       logger.error(`Failed to create flight: ${flightData.flightId}`, { error });
       throw new AppError('Create operation failed', 500, error as Error);
+    }
+  }
+
+  async deleteStaleFlights(olderThan: Date): Promise<void> {
+    try {
+      const result = await Flight.deleteMany({ lastUpdated: { $lt: olderThan } });
+      if (result.deletedCount > 0) {
+        logger.info(`Cleaned up ${result.deletedCount} stale flights`);
+      }
+    } catch (error) {
+      logger.error('Failed to cleanup stale flights', { error });
     }
   }
 }

@@ -66,7 +66,7 @@ export class OfflineService extends BaseFlightService {
     validateCoordinates(latitude, longitude);
 
     return {
-      flightId: feature.properties?.id || `bird-${index}`,
+      flightId: String(feature.properties?.id || `bird-${index}`).toLowerCase(),
       longitude,
       latitude,
       velocity: 0,

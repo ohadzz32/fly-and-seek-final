@@ -1,12 +1,29 @@
 import { Request, Response } from 'express';
 import { DIContainer } from '../container/DIContainer';
+import { ServiceManager } from '../managers/ServiceManager';
+import { SnapService } from '../services/SnapService';
 import { NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
 export class FlightController {
   private readonly repository = DIContainer.getInstance().getFlightRepository();
 
+  constructor(private readonly serviceManager?: ServiceManager) {}
+
   async getAllFlights(req: Request, res: Response): Promise<void> {
+    if (req.query.mode === 'SNAP') {
+      logger.info('Snap mode activated - checking data');
+      const currentService = this.serviceManager?.getCurrentService();
+      if (currentService instanceof SnapService) {
+        await currentService.ensureData();
+      }
+    }
+
+    const currentService = this.serviceManager?.getCurrentService();
+    if (currentService instanceof SnapService) {
+      await currentService.ensureData();
+    }
+
     const flights = await this.repository.findAll();
     
     logger.info(`Retrieved ${flights.length} flights for client`);

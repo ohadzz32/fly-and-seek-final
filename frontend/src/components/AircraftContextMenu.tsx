@@ -6,6 +6,7 @@ interface AircraftContextMenuProps {
   y: number;
   aircraft: IFlight;
   hasSearchArea: boolean;
+  isSmartSearchActive: boolean;
   onOpenRegularSearch: () => void;
   onOpenSmartSearch: () => void;
   onClose: () => void;
@@ -16,6 +17,7 @@ export const AircraftContextMenu: React.FC<AircraftContextMenuProps> = ({
   y,
   aircraft,
   hasSearchArea,
+  isSmartSearchActive,
   onOpenRegularSearch,
   onOpenSmartSearch,
   onClose
@@ -36,7 +38,7 @@ export const AircraftContextMenu: React.FC<AircraftContextMenuProps> = ({
       onClick={(e) => e.stopPropagation()}
     >
       <div style={styles.menuHeader}>
-        מזהה: {aircraft.flightId}
+        ID: {aircraft.flightId}
       </div>
       
       <div 
@@ -50,16 +52,21 @@ export const AircraftContextMenu: React.FC<AircraftContextMenuProps> = ({
         <span style={styles.checkmark}>
           {hasSearchArea ? '✓' : '○'}
         </span>
-        <span>פתח אזור חיפוש רגיל</span>
+        <span>Open Regular Search Area</span>
       </div>
 
       <div 
-        style={styles.menuItem} 
+        style={{
+          ...styles.menuItem,
+          color: isSmartSearchActive ? '#00ff88' : '#fff'
+        }} 
         className="menu-item-hover"
         onClick={() => handleMenuItemClick(onOpenSmartSearch)}
       >
-        <span style={styles.checkmark}>○</span>
-        <span>פתח אזור חיפוש חכם</span>
+        <span style={styles.checkmark}>
+          {isSmartSearchActive ? '✓' : '○'}
+        </span>
+        <span>Enable Smart Search Prediction</span>
       </div>
     </div>
   );
